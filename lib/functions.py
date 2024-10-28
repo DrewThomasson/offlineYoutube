@@ -91,10 +91,12 @@ def process_videos(video_links, whisper_model):
         thumbnail_path = download_thumbnail(video_id)
 
         for sentence, timestamp in sentences:
+            timestamped_link = f"https://www.youtube.com/watch?v={video_id}&t={int(timestamp)}s"
             data.append({
                 'text': sentence,
                 'timestamp': timestamp,
                 'YouTube_link': link,
+                'YouTube_timestamped_link': timestamped_link,
                 'thumbnail_path': thumbnail_path,
                 'video_title': video_title
             })
@@ -144,7 +146,7 @@ def query_vector_database(query, embedding_model, top_k=5):
     query_vector = embedding_model.encode(query).reshape(1, -1)
     distances, indices = index.search(query_vector, top_k)
 
-    results = data.loc[indices[0]].copy()  # Avoid SettingWithCopyWarning
+    results = data.loc[indices[0]].copy()
     results['score'] = distances[0]
 
     # Extract base video link for grouping
@@ -154,18 +156,19 @@ def query_vector_database(query, embedding_model, top_k=5):
     video_relevance = (
         results.groupby('video_id')
         .agg(
-            relevance=('score', 'mean'),  # Average relevance for each video
-            thumbnail=('thumbnail_path', 'first'),  # Use the first thumbnail
-            text=('text', 'first'),  # Use the first text snippet
-            original_link=('YouTube_link', 'first'),  # Use the first timestamped link
+            relevance=('score', 'mean'),
+            thumbnail=('thumbnail_path', 'first'),
+            text=('text', 'first'),
+            original_link=('YouTube_link', 'first'),
             video_title=('video_title', 'first')
         )
-        .reset_index()
-        .sort_values(by='relevance', ascending=True)  # Sort by relevance (lower is better)
-        .head(5)  # Limit to top 5 videos
+        .sort_values(by='relevance', ascending=True)
+        .head(5)
+        .reset_index(drop=True)  # Reset index here
     )
 
-    return results[['text', 'YouTube_link', 'thumbnail_path', 'score', 'video_title']], video_relevance
+    return results[['text', 'YouTube_timestamped_link', 'thumbnail_path', 'score', 'video_title']], video_relevance
+
 
 def get_video_links(option, input_text):
     """
