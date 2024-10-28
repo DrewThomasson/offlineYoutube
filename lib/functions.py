@@ -112,10 +112,16 @@ def save_dataset(data):
     data.to_csv(dataset_path, index=False)
     print(f"Dataset saved to {dataset_path}")
 
-def create_vector_database(data, embedding_model):
+def create_vector_database(embedding_model):
     """
-    Create a FAISS vector database from the dataset.
+    Create a FAISS vector database from the entire dataset.
     """
+    dataset_path = 'datasets/transcript_dataset.csv'
+    if not os.path.exists(dataset_path):
+        print("Dataset not found. Please add videos first.")
+        return
+
+    data = pd.read_csv(dataset_path)
     data['embedding'] = data['text'].apply(lambda x: embedding_model.encode(x))
 
     dimension = len(data['embedding'].iloc[0])

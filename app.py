@@ -23,7 +23,19 @@ def add_videos_interface(option, input_text):
         return "No valid video links provided."
     data = process_videos(video_links, whisper_model)
     save_dataset(data)
-    create_vector_database(data, embedding_model)
+    create_vector_database(embedding_model)
+    return "Videos processed and database updated."
+
+def add_videos_interface(option, input_text):
+    """
+    Interface function for adding videos to the database.
+    """
+    video_links = get_video_links(option, input_text)
+    if not video_links:
+        return "No valid video links provided."
+    data = process_videos(video_links, whisper_model)
+    save_dataset(data)
+    create_vector_database(embedding_model)
     return "Videos processed and database updated."
 
 def search_interface(query_text, top_k):
@@ -105,6 +117,7 @@ Examples:
     if args.command == 'add':
         status = add_videos_interface(args.type, args.input)
         print(status)
+
 
     elif args.command == 'search':
         detailed_results, top_videos_html = search_interface(args.query, args.top_k)
