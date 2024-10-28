@@ -19,7 +19,7 @@ This application allows users to **extract transcripts from YouTube videos**, **
 Ensure you have Python installed (>= 3.7). Then, install the required dependencies:
 
 ```bash
-pip install yt-dlp pandas numpy requests faiss-cpu faster-whisper sentence-transformers gradio argparse beautifulsoup4
+pip install -r requirements.txt
 ```
 
 ---
