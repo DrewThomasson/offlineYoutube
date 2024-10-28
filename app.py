@@ -47,11 +47,11 @@ def search_interface(query_text, top_k):
     results, top_videos = query_vector_database(query_text, embedding_model, top_k=top_k)
 
     # Prepare detailed results
-    detailed_html = "<h3>Detailed Results:</h3>"
+    detailed_html = "<h1>Detailed Results:</h1>"
     for _, row in results.iterrows():
         detailed_html += f"""
         <div style='margin-bottom:20px;'>
-            <img src='{row['thumbnail_path']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
+            <img src='file/{row['thumbnail_path']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
             <p><strong>Title:</strong> {row['video_title']}</p>
             <p><strong>Text:</strong> {row['text']}</p>
             <p><strong>Score:</strong> {row['score']:.4f}</p>
@@ -61,12 +61,12 @@ def search_interface(query_text, top_k):
         """
 
     # Prepare top videos
-    top_videos_html = "<h3>Top Relevant Videos:</h3>"
+    top_videos_html = "<h1>Top Relevant Videos:</h1>"
     for idx, row in top_videos.iterrows():
         top_videos_html += f"""
         <div style='margin-bottom:20px;'>
             <h4>Rank {idx +1}</h4>
-            <img src='{row['thumbnail']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
+            <img src='file/{row['thumbnail']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
             <p><strong>Title:</strong> {row['video_title']}</p>
             <p><strong>Relevance Score:</strong> {row['relevance']:.4f}</p>
             <p><strong>Example Text:</strong> {row['text']}</p>
@@ -74,7 +74,9 @@ def search_interface(query_text, top_k):
             <div style='clear:both;'></div>
         </div>
         """
-    return detailed_html, top_videos_html
+    #return detailed_html, top_videos_html
+    return top_videos_html, detailed_html
+
 
 def main():
     #parser = argparse.ArgumentParser(description="YouTube Video Search Application")
