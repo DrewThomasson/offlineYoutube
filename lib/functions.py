@@ -10,7 +10,7 @@ import faiss
 from faster_whisper import WhisperModel
 from sentence_transformers import SentenceTransformer
 
-def initialize_models(whisper_model_size='small', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
+def initialize_models(whisper_model_size='tiny', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
     """
     Initialize the Whisper and embedding models.
     """
