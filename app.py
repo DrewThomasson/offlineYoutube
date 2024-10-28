@@ -26,18 +26,6 @@ def add_videos_interface(option, input_text):
     create_vector_database(embedding_model)
     return "Videos processed and database updated."
 
-def add_videos_interface(option, input_text):
-    """
-    Interface function for adding videos to the database.
-    """
-    video_links = get_video_links(option, input_text)
-    if not video_links:
-        return "No valid video links provided."
-    data = process_videos(video_links, whisper_model)
-    save_dataset(data)
-    create_vector_database(embedding_model)
-    return "Videos processed and database updated."
-
 def search_interface(query_text, top_k):
     """
     Interface function for searching the database.
@@ -45,6 +33,22 @@ def search_interface(query_text, top_k):
     if not os.path.exists('datasets/vector_index.faiss'):
         return "No database found. Please add videos first.", None
     results, top_videos = query_vector_database(query_text, embedding_model, top_k=top_k)
+
+    # Prepare top videos
+    top_videos_html = "<h1>Top Relevant Videos:</h1>"
+    for idx, row in top_videos.iterrows():
+        rank = idx + 1  # Since idx is now sequential
+        top_videos_html += f"""
+        <div style='margin-bottom:20px;'>
+            <h4>Rank {rank}</h4>
+            <img src='file/{row['thumbnail']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
+            <p><strong>Title:</strong> {row['video_title']}</p>
+            <p><strong>Relevance Score:</strong> {row['relevance']:.4f}</p>
+            <p><strong>Example Text:</strong> {row['text']}</p>
+            <p><a href='{row['original_link']}' target='_blank'>Watch Video</a></p>
+            <div style='clear:both;'></div>
+        </div>
+        """
 
     # Prepare detailed results
     detailed_html = "<h1>Detailed Results:</h1>"
@@ -55,31 +59,13 @@ def search_interface(query_text, top_k):
             <p><strong>Title:</strong> {row['video_title']}</p>
             <p><strong>Text:</strong> {row['text']}</p>
             <p><strong>Score:</strong> {row['score']:.4f}</p>
-            <p><a href='{row['YouTube_link']}' target='_blank'>Watch Video</a></p>
+            <p><a href='{row['YouTube_timestamped_link']}' target='_blank'>Watch Video at Timestamp</a></p>
             <div style='clear:both;'></div>
         </div>
         """
-
-    # Prepare top videos
-    top_videos_html = "<h1>Top Relevant Videos:</h1>"
-    for idx, row in top_videos.iterrows():
-        top_videos_html += f"""
-        <div style='margin-bottom:20px;'>
-            <h4>Rank {idx +1}</h4>
-            <img src='file/{row['thumbnail']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
-            <p><strong>Title:</strong> {row['video_title']}</p>
-            <p><strong>Relevance Score:</strong> {row['relevance']:.4f}</p>
-            <p><strong>Example Text:</strong> {row['text']}</p>
-            <p><a href='{row['original_link']}' target='_blank'>Watch Video</a></p>
-            <div style='clear:both;'></div>
-        </div>
-        """
-    #return detailed_html, top_videos_html
     return top_videos_html, detailed_html
 
-
 def main():
-    #parser = argparse.ArgumentParser(description="YouTube Video Search Application")
     parser = argparse.ArgumentParser(
         description="YouTube Video Search Application",
         epilog="""
@@ -120,22 +106,13 @@ Examples:
         status = add_videos_interface(args.type, args.input)
         print(status)
 
-
     elif args.command == 'search':
-        detailed_results, top_videos_html = search_interface(args.query, args.top_k)
-        if isinstance(detailed_results, str):
-            print(detailed_results)
+        top_videos_html, detailed_results = search_interface(args.query, args.top_k)
+        if isinstance(top_videos_html, str):
+            print(top_videos_html)
         else:
             # Extract data from HTML for console output
             from bs4 import BeautifulSoup
-            soup = BeautifulSoup(detailed_results, 'html.parser')
-            print("Detailed Results:\n")
-            for div in soup.find_all('div'):
-                title = div.find('p', text=lambda t: t and 'Title:' in t).text
-                text = div.find('p', text=lambda t: t and 'Text:' in t).text
-                score = div.find('p', text=lambda t: t and 'Score:' in t).text
-                link = div.find('a')['href']
-                print(f"{title}\n{score}\n{text}\nLink: {link}\n")
 
             # Extract top videos
             soup = BeautifulSoup(top_videos_html, 'html.parser')
@@ -147,6 +124,16 @@ Examples:
                 example_text = div.find('p', text=lambda t: t and 'Example Text:' in t).text
                 link = div.find('a')['href']
                 print(f"{rank}\n{title}\n{relevance}\n{example_text}\nLink: {link}\n")
+
+            # Extract detailed results
+            soup = BeautifulSoup(detailed_results, 'html.parser')
+            print("Detailed Results:\n")
+            for div in soup.find_all('div'):
+                title = div.find('p', text=lambda t: t and 'Title:' in t).text
+                text = div.find('p', text=lambda t: t and 'Text:' in t).text
+                score = div.find('p', text=lambda t: t and 'Score:' in t).text
+                link = div.find('a')['href']
+                print(f"{title}\n{score}\n{text}\nLink: {link}\n")
 
     else:
         # Run Gradio interface if no command is provided or 'ui' command is used
@@ -166,9 +153,9 @@ Examples:
                 query_text = gr.Textbox(lines=1, placeholder="Enter your search query")
                 top_k = gr.Slider(1, 20, value=5, step=1, label="Number of Results")
                 search_button = gr.Button("Search")
-                detailed_results = gr.HTML()
                 top_video_results = gr.HTML()
-                search_button.click(search_interface, inputs=[query_text, top_k], outputs=[detailed_results, top_video_results])
+                detailed_results = gr.HTML()
+                search_button.click(search_interface, inputs=[query_text, top_k], outputs=[top_video_results, detailed_results])
 
         demo.launch()
 
