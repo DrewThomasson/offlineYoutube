@@ -17,7 +17,7 @@ This application vectorizes YouTube videos for similarity searches using embeddi
 2. **Install dependencies directly**  
    Run the following in your terminal:  
    ```bash
-   pip install numpy pandas scikit-learn youtube-dl openai
+   pip install yt-dlp pandas numpy requests faiss-cpu faster-whisper sentence-transformers
    ```
 
 ---
