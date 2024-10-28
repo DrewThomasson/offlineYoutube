@@ -1,3 +1,5 @@
+# lib/functions.py
+
 import os
 import re
 import yt_dlp
@@ -8,27 +10,43 @@ import faiss
 from faster_whisper import WhisperModel
 from sentence_transformers import SentenceTransformer
 
-# Setup directories
-os.makedirs('thumbnails', exist_ok=True)
-os.makedirs('datasets', exist_ok=True)
+def initialize_models(whisper_model_size='small', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
+    """
+    Initialize the Whisper and embedding models.
+    """
+    whisper_model = WhisperModel(whisper_model_size, device=device, compute_type=compute_type)
+    embedding_model = SentenceTransformer(embedding_model_name)
+    return whisper_model, embedding_model
 
-# Initialize models
-whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+def setup_directories():
+    """
+    Create necessary directories for storing thumbnails and datasets.
+    """
+    os.makedirs('thumbnails', exist_ok=True)
+    os.makedirs('datasets', exist_ok=True)
 
 def extract_video_id_from_link(link):
+    """
+    Extract YouTube video ID from a link.
+    """
     video_id = re.search(r"v=([0-9A-Za-z_-]{11})", link)
-    return f"https://www.youtube.com/watch?v={video_id.group(1)}" if video_id else link
+    return video_id.group(1) if video_id else None
 
 def get_video_id(youtube_link):
+    """
+    Get the video ID from a YouTube link.
+    """
     pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
     match = re.search(pattern, youtube_link)
     return match.group(1) if match else None
 
 def download_thumbnail(video_id):
+    """
+    Download the thumbnail image for a YouTube video.
+    """
     thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
     thumbnail_path = f"thumbnails/{video_id}.jpg"
-
+    
     if not os.path.exists(thumbnail_path):
         response = requests.get(thumbnail_url, stream=True)
         if response.status_code == 200:
@@ -36,13 +54,21 @@ def download_thumbnail(video_id):
                 f.write(response.content)
     return thumbnail_path
 
-def extract_transcript(video_url):
+def extract_transcript(video_url, whisper_model):
+    """
+    Transcribe the audio of a YouTube video using faster-whisper.
+    """
     video_id = get_video_id(video_url)
     print(f"Transcribing {video_id}...")
 
-    with yt_dlp.YoutubeDL({'format': 'bestaudio'}) as ydl:
-        info = ydl.extract_info(video_url, download=False)
-        audio_url = info['url']
+    try:
+        with yt_dlp.YoutubeDL({'format': 'bestaudio'}) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+            audio_url = info['url']
+            video_title = info.get('title', '')
+    except Exception as e:
+        print(f"Error downloading audio: {e}")
+        return [], '', ''
 
     segments, _ = whisper_model.transcribe(audio_url, vad_filter=True)
 
@@ -52,20 +78,16 @@ def extract_transcript(video_url):
             sentence = sentence.strip()
             if sentence:
                 sentences.append((sentence, segment.start))
-    return sentences
+    return sentences, video_id, video_title
 
-def process_videos(video_links):
+def process_videos(video_links, whisper_model):
+    """
+    Process a list of YouTube videos and extract their transcripts.
+    """
     data = []
 
     for link in video_links:
-        video_id = get_video_id(link)
-
-        # Extract video metadata (including title)
-        with yt_dlp.YoutubeDL({'format': 'bestaudio'}) as ydl:
-            info = ydl.extract_info(link, download=False)
-            video_title = info.get('title', 'Unknown Title')
-
-        sentences = extract_transcript(link)
+        sentences, video_id, video_title = extract_transcript(link, whisper_model)
         thumbnail_path = download_thumbnail(video_id)
 
         for sentence, timestamp in sentences:
@@ -79,8 +101,10 @@ def process_videos(video_links):
 
     return pd.DataFrame(data)
 
-
 def save_dataset(data):
+    """
+    Save the dataset to a CSV file.
+    """
     dataset_path = 'datasets/transcript_dataset.csv'
     if os.path.exists(dataset_path):
         existing_data = pd.read_csv(dataset_path)
@@ -88,7 +112,10 @@ def save_dataset(data):
     data.to_csv(dataset_path, index=False)
     print(f"Dataset saved to {dataset_path}")
 
-def create_vector_database(data):
+def create_vector_database(data, embedding_model):
+    """
+    Create a FAISS vector database from the dataset.
+    """
     data['embedding'] = data['text'].apply(lambda x: embedding_model.encode(x))
 
     dimension = len(data['embedding'].iloc[0])
@@ -97,43 +124,59 @@ def create_vector_database(data):
     embeddings = np.vstack(data['embedding'].values)
     index.add(embeddings)
 
+    # Save the FAISS index
     faiss.write_index(index, 'datasets/vector_index.faiss')
     print("Vector database created and saved.")
-    return index
 
-def query_vector_database(query, top_k=5):
+def query_vector_database(query, embedding_model, top_k=5):
+    """
+    Query the FAISS vector database with a search query.
+    """
     index = faiss.read_index('datasets/vector_index.faiss')
     data = pd.read_csv('datasets/transcript_dataset.csv')
 
     query_vector = embedding_model.encode(query).reshape(1, -1)
     distances, indices = index.search(query_vector, top_k)
 
-    results = data.loc[indices[0]].copy()
+    results = data.loc[indices[0]].copy()  # Avoid SettingWithCopyWarning
     results['score'] = distances[0]
 
-    results['video_id'] = results['YouTube_link'].apply(extract_video_id_from_link)
+    # Extract base video link for grouping
+    results['video_id'] = results['YouTube_link'].apply(get_video_id)
 
+    # Aggregate most relevant videos by video ID
     video_relevance = (
         results.groupby('video_id')
         .agg(
-            relevance=('score', 'mean'),
-            thumbnail=('thumbnail_path', 'first'),
-            text=('text', 'first'),
-            original_link=('YouTube_link', 'first')
+            relevance=('score', 'mean'),  # Average relevance for each video
+            thumbnail=('thumbnail_path', 'first'),  # Use the first thumbnail
+            text=('text', 'first'),  # Use the first text snippet
+            original_link=('YouTube_link', 'first'),  # Use the first timestamped link
+            video_title=('video_title', 'first')
         )
         .reset_index()
-        .sort_values(by='relevance', ascending=True)
-        .head(5)
+        .sort_values(by='relevance', ascending=True)  # Sort by relevance (lower is better)
+        .head(5)  # Limit to top 5 videos
     )
 
-    return results[['text', 'YouTube_link', 'thumbnail_path', 'score']], video_relevance
+    return results[['text', 'YouTube_link', 'thumbnail_path', 'score', 'video_title']], video_relevance
 
-def get_video_links(playlist_or_links):
-    if "youtube.com/playlist" in playlist_or_links:
-        with yt_dlp.YoutubeDL({'extract_flat': 'in_playlist'}) as ydl:
-            playlist_info = ydl.extract_info(playlist_or_links, download=False)
-            video_links = [entry['url'] for entry in playlist_info['entries']]
+def get_video_links(option, input_text):
+    """
+    Get video links from a playlist or a list of video URLs.
+    """
+    video_links = []
+    if option == 'playlist':
+        playlist_url = input_text.strip()
+        try:
+            with yt_dlp.YoutubeDL({'extract_flat': 'in_playlist'}) as ydl:
+                playlist_info = ydl.extract_info(playlist_url, download=False)
+                video_links = [entry['url'] for entry in playlist_info['entries']]
+        except Exception as e:
+            print(f"Error extracting playlist: {e}")
+    elif option == 'videos':
+        video_links = input_text.strip().split(',')
     else:
-        video_links = playlist_or_links.split(',')
+        print("Invalid option.")
+    
     return video_links
-

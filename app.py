@@ -1,131 +1,82 @@
-import os
-import pandas as pd
-import argparse
+# app.py
+
 import gradio as gr
-from lib.functions import (
-    get_video_links, 
-    process_videos, 
-    save_dataset, 
-    create_vector_database, 
-    query_vector_database
-)
+from lib.functions import initialize_models, setup_directories, process_videos, save_dataset, create_vector_database, query_vector_database, get_video_links
+import os
 
-def main(mode, video_links=None, query=None):
-    if mode == 'add_videos':
-        if not video_links:
-            return "No videos provided."
-        data = process_videos(video_links)
-        save_dataset(data)
-        create_vector_database(data)
-        return "Videos added and database updated successfully."
-    elif mode == 'query':
-        if not query:
-            return "No query provided."
-        results, top_videos = query_vector_database(query)
-        return results, top_videos
+# Initialize models
+setup_directories()
+whisper_model, embedding_model = initialize_models()
 
-def gradio_interface():
-    def add_videos_interface(playlist_or_links):
-        video_links = get_video_links(playlist_or_links)
-        return main('add_videos', video_links=video_links)
+def add_videos_interface(option, input_text):
+    """
+    Interface function for adding videos to the database.
+    """
+    video_links = get_video_links(option, input_text)
+    if not video_links:
+        return "No valid video links provided."
+    data = process_videos(video_links, whisper_model)
+    save_dataset(data)
+    create_vector_database(data, embedding_model)
+    return "Videos processed and database updated."
 
-    def query_interface(query):
-        results, top_videos = main('query', query=query)
+def search_interface(query_text, top_k):
+    """
+    Interface function for searching the database.
+    """
+    if not os.path.exists('datasets/vector_index.faiss'):
+        return "No database found. Please add videos first.", None
+    results, top_videos = query_vector_database(query_text, embedding_model, top_k=top_k)
 
-        # Format the detailed results with video titles and links
-        detailed_results = "\n\n".join([
-            f"**Video Title:** {row['video_title']}\n"
-            f"**Text:** {row['text']}\n"
-            f"**Link:** [Watch Video]({row['YouTube_link']})\n"
-            f"**Score:** {row['score']:.4f}"
-            for _, row in results.iterrows()
-        ])
+    # Prepare detailed results
+    detailed_html = "<h3>Detailed Results:</h3>"
+    for _, row in results.iterrows():
+        detailed_html += f"""
+        <div style='margin-bottom:20px;'>
+            <img src='{row['thumbnail_path']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
+            <p><strong>Title:</strong> {row['video_title']}</p>
+            <p><strong>Text:</strong> {row['text']}</p>
+            <p><strong>Score:</strong> {row['score']:.4f}</p>
+            <p><a href='{row['YouTube_link']}' target='_blank'>Watch Video</a></p>
+            <div style='clear:both;'></div>
+        </div>
+        """
 
-        # Format the top videos with thumbnails, links, and relevance scores
-        top_videos_markdown = "\n\n".join([
-            f"### Rank {idx + 1}\n"
-            f"**Video Title:** {row['video_title']}\n"
-            f"**Relevance Score:** {row['relevance']:.4f}\n"
-            f"**Link:** [Watch Video]({row['original_link']})\n"
-            f"![Thumbnail]({row['thumbnail']})\n"
-            f"**Example Text:** {row['text']}"
-            for idx, row in top_videos.iterrows()
-        ])
+    # Prepare top videos
+    top_videos_html = "<h3>Top Relevant Videos:</h3>"
+    for idx, row in top_videos.iterrows():
+        top_videos_html += f"""
+        <div style='margin-bottom:20px;'>
+            <h4>Rank {idx +1}</h4>
+            <img src='{row['thumbnail']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
+            <p><strong>Title:</strong> {row['video_title']}</p>
+            <p><strong>Relevance Score:</strong> {row['relevance']:.4f}</p>
+            <p><strong>Example Text:</strong> {row['text']}</p>
+            <p><a href='{row['original_link']}' target='_blank'>Watch Video</a></p>
+            <div style='clear:both;'></div>
+        </div>
+        """
+    return detailed_html, top_videos_html
 
-        return detailed_results, top_videos_markdown
-
-    with gr.Blocks() as demo:
-        gr.Markdown("## YouTube Video Dataset Manager")
-
-        with gr.Tab("Add Videos"):
-            playlist_or_links = gr.Textbox(
-                label="Enter Playlist URL or Video Links (comma-separated)"
-            )
-            add_button = gr.Button("Add to Dataset")
-            output_add = gr.Textbox(label="Status")
-            add_button.click(add_videos_interface, inputs=[playlist_or_links], outputs=[output_add])
-
-        with gr.Tab("Query Database"):
-            query_input = gr.Textbox(label="Enter Query")
-            query_button = gr.Button("Search")
-            result_output = gr.Markdown(label="Search Results")
-            top_videos_output = gr.Markdown(label="Top Videos")
-            query_button.click(
-                query_interface, 
-                inputs=[query_input], 
-                outputs=[result_output, top_videos_output]
-            )
-
-    demo.launch()
-
+with gr.Blocks() as demo:
+    gr.Markdown("# YouTube Video Search Application")
+    
+    with gr.Tab("Add Videos"):
+        gr.Markdown("### Add videos to the database")
+        add_option = gr.Radio(["playlist", "videos"], label="Input Type", value="playlist")
+        input_text = gr.Textbox(lines=2, placeholder="Enter playlist URL or comma-separated video URLs")
+        add_button = gr.Button("Add Videos")
+        add_output = gr.Textbox(label="Status")
+        add_button.click(add_videos_interface, inputs=[add_option, input_text], outputs=add_output)
+    
+    with gr.Tab("Search"):
+        gr.Markdown("### Search the video database")
+        query_text = gr.Textbox(lines=1, placeholder="Enter your search query")
+        top_k = gr.Slider(1, 20, value=5, step=1, label="Number of Results")
+        search_button = gr.Button("Search")
+        detailed_results = gr.HTML()
+        top_video_results = gr.HTML()
+        search_button.click(search_interface, inputs=[query_text, top_k], outputs=[detailed_results, top_video_results])
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="YouTube Video Dataset Manager")
-    parser.add_argument("--mode", choices=["cli", "gradio"], help="Run mode: cli or gradio")
-    parser.add_argument("--action", choices=["add_videos", "query"], help="Action to perform in CLI mode")
-    parser.add_argument("--links", help="Playlist URL or comma-separated video links")
-    parser.add_argument("--query", help="Query to search in the existing database")
-
-    args = parser.parse_args()
-
-    if args.mode == "gradio":
-        gradio_interface()
-    elif args.mode == "cli":
-        if args.action == "add_videos":
-            if not args.links:
-                print("Error: Please provide a playlist URL or video links with --links")
-            else:
-                video_links = get_video_links(args.links)
-                print(main('add_videos', video_links=video_links))
-
-        elif args.action == "query":
-            if not args.query:
-                print("Error: Please provide a query with --query")
-            else:
-                results, top_videos = main('query', query=args.query)
-
-                # Print detailed search results (relevant sentences)
-                print("\nDetailed Results:\n")
-                for _, row in results.iterrows():
-                    print(f"Video Title: {row['video_title']}")
-                    print(f"Text: {row['text']}")
-                    print(f"Link: {row['YouTube_link']}")
-                    print(f"Thumbnail: {row['thumbnail_path']}")
-                    print(f"Score: {row['score']:.4f}\n")
-
-                # Print top-ranked videos based on relevance
-                print("\nTop Relevant Videos:\n")
-                for idx, row in top_videos.iterrows():
-                    print(f"Rank {idx + 1}:")
-                    print(f"Video Title: {row['video_title']}")
-                    print(f"Relevance Score: {row['relevance']:.4f}")
-                    print(f"Video Link: {row['original_link']}")
-                    print(f"Thumbnail: {row['thumbnail']}")
-                    print(f"Example Text: {row['text']}\n")
-
-        else:
-            print("Invalid action. Use --action add_videos or --action query.")
-
-
-    else:
-        print("Please provide a valid mode. Use --help for more details.")
+    demo.launch()
