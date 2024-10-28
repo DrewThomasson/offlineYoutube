@@ -8,6 +8,8 @@ This application vectorizes YouTube videos for similarity searches using embeddi
 
 ## Installation
 
+- Tested on `Python 3.10.15`
+
 1. **Clone the repository**  
    ```bash
    git clone <repository_url>
