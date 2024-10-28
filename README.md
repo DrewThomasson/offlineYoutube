@@ -14,6 +14,11 @@ This application allows users to **extract transcripts from YouTube videos**, **
 
 ---
 
+## **Web Interface**
+<img width="520" alt="image" src="https://github.com/user-attachments/assets/81c20089-f786-4743-a151-307560acbe1a">
+<img width="513" alt="image" src="https://github.com/user-attachments/assets/98771095-4333-491a-b7f5-bda84932f27f">
+
+
 ## **Installation**
 
 Ensure you have Python installed (>= 3.7). Then, install the required dependencies:
