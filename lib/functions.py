@@ -104,6 +104,7 @@ def process_videos(video_links, whisper_model, embedding_model, keep_videos=Fals
     Process each YouTube video one by one, updating the dataset and vector database after each.
     """
     # Paths for dataset and index
+    video_titles = set()  # Use a set to store unique video titles
     dataset_path = 'datasets/transcript_dataset.csv'
     index_path = 'datasets/vector_index.faiss'
 
@@ -164,6 +165,7 @@ def process_videos(video_links, whisper_model, embedding_model, keep_videos=Fals
                 'video_title': video_title,
                 'local_video_path': local_video_path
             })
+            video_titles.add(video_title)
             # Encode the sentence to get embedding
             embedding = embedding_model.encode(sentence).astype('float32')
             embeddings.append(embedding)
@@ -195,8 +197,9 @@ def process_videos(video_links, whisper_model, embedding_model, keep_videos=Fals
     # Delete the tmp directory and all its contents if not keeping videos
     if not keep_videos and os.path.exists('tmp'):
         shutil.rmtree('tmp')
+
     print("All videos have been processed and added to the database.")
-    return data
+    return data, list(video_titles)  # Convert set to list before returning
 
 def query_vector_database(query, embedding_model, top_k=5):
     """
