@@ -23,8 +23,11 @@ def add_videos_interface(option, input_text, keep_videos):
     if not video_links:
         return "No valid video links provided."
     # Process videos (this will show tqdm progress bar in terminal)
-    data = process_videos(video_links, whisper_model, embedding_model, keep_videos=keep_videos)
-    return "Videos processed and database updated."
+    data, video_titles = process_videos(video_links, whisper_model, embedding_model, keep_videos=keep_videos)
+    
+    # Prepare a message with the video titles
+    titles_message = "\n".join(f"- {title}" for title in video_titles)
+    return f"Videos processed and database updated.\nAdded Videos:\n{titles_message}"
 
 def search_interface(query_text, top_k):
     """
