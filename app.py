@@ -1,6 +1,5 @@
 import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
+import multiprocessing
 import gradio as gr
 import argparse
 from lib.functions import (
@@ -8,10 +7,6 @@ from lib.functions import (
     query_vector_database, get_video_links
 )
 import sys
-
-# Initialize models
-setup_directories()
-whisper_model, embedding_model = initialize_models()
 
 def add_videos_interface(input_text, keep_videos):
     """
@@ -192,4 +187,16 @@ Examples:
         demo.launch()
 
 if __name__ == "__main__":
+    # Fix for multiprocessing in PyInstaller
+    multiprocessing.freeze_support()
+
+    # Ensure set_start_method is only set once
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass
+    # Initialize models
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    setup_directories()
+    whisper_model, embedding_model = initialize_models()
     main()
