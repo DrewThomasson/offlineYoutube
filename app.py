@@ -1,29 +1,29 @@
 # app.py
 
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import gradio as gr
 import argparse
 from lib.functions import (
     initialize_models, setup_directories, process_videos,
-    save_dataset, create_vector_database, query_vector_database,
-    get_video_links
+    query_vector_database, get_video_links
 )
-import os
 import sys
 
 # Initialize models
 setup_directories()
 whisper_model, embedding_model = initialize_models()
 
-def add_videos_interface(option, input_text):
+def add_videos_interface(option, input_text, keep_videos):
     """
     Interface function for adding videos to the database.
     """
     video_links = get_video_links(option, input_text)
     if not video_links:
         return "No valid video links provided."
-    data = process_videos(video_links, whisper_model)
-    save_dataset(data)
-    create_vector_database(embedding_model)
+    # Process videos (this will show tqdm progress bar in terminal)
+    data = process_videos(video_links, whisper_model, embedding_model, keep_videos=keep_videos)
     return "Videos processed and database updated."
 
 def search_interface(query_text, top_k):
@@ -38,6 +38,20 @@ def search_interface(query_text, top_k):
     top_videos_html = "<h1>Top Relevant Videos:</h1>"
     for idx, row in top_videos.iterrows():
         rank = idx + 1  # Since idx is now sequential
+        # Check if local video exists
+        local_video_exists = os.path.exists(row['local_video_path']) if row['local_video_path'] else False
+        local_video_player = ''
+        if local_video_exists:
+            local_video_url = 'file/' + row['local_video_path']
+            local_video_player = f"""
+            <details>
+                <summary>Show Local Video</summary>
+                <video width='320' height='240' controls>
+                    <source src='{local_video_url}' type='video/mp4'>
+                    Your browser does not support the video tag.
+                </video>
+            </details>
+            """
         top_videos_html += f"""
         <div style='margin-bottom:20px;'>
             <h4>Rank {rank}</h4>
@@ -45,7 +59,8 @@ def search_interface(query_text, top_k):
             <p><strong>Title:</strong> {row['video_title']}</p>
             <p><strong>Relevance Score:</strong> {row['relevance']:.4f}</p>
             <p><strong>Example Text:</strong> {row['text']}</p>
-            <p><a href='{row['original_link']}' target='_blank'>Watch Video</a></p>
+            <p><a href='{row['original_link']}' target='_blank'>Watch on YouTube</a></p>
+            {local_video_player}
             <div style='clear:both;'></div>
         </div>
         """
@@ -53,13 +68,29 @@ def search_interface(query_text, top_k):
     # Prepare detailed results
     detailed_html = "<h1>Detailed Results:</h1>"
     for _, row in results.iterrows():
+        # Check if local video exists
+        local_video_exists = os.path.exists(row['local_video_path']) if row['local_video_path'] else False
+        local_video_player = ''
+        if local_video_exists:
+            local_video_url = 'file/' + row['local_video_path']
+            timestamp = int(row['timestamp'])
+            local_video_player = f"""
+            <details>
+                <summary>Show Local Video at Timestamp</summary>
+                <video width='320' height='240' controls>
+                    <source src='{local_video_url}#t={timestamp}' type='video/mp4'>
+                    Your browser does not support the video tag.
+                </video>
+            </details>
+            """
         detailed_html += f"""
         <div style='margin-bottom:20px;'>
             <img src='file/{row['thumbnail_path']}' alt='Thumbnail' width='120' style='float:left; margin-right:10px;'>
             <p><strong>Title:</strong> {row['video_title']}</p>
             <p><strong>Text:</strong> {row['text']}</p>
             <p><strong>Score:</strong> {row['score']:.4f}</p>
-            <p><a href='{row['YouTube_timestamped_link']}' target='_blank'>Watch Video at Timestamp</a></p>
+            <p><a href='{row['YouTube_timestamped_link']}' target='_blank'>Watch on YouTube at Timestamp</a></p>
+            {local_video_player}
             <div style='clear:both;'></div>
         </div>
         """
@@ -70,14 +101,14 @@ def main():
         description="YouTube Video Search Application",
         epilog="""
 Examples:
-  # Add videos from a playlist
-  python app.py add --type playlist --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID"
+  # Add videos from a playlist and keep videos locally
+  python app.py add --type playlist --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID" --keep_videos
 
-  # Add specific videos
-  python app.py add --type videos --input "https://www.youtube.com/watch?v=dQw4w9WgXcQ,https://www.youtube.com/watch?v=9bZkp7q19f0"
+  # Add specific videos without keeping videos locally
+  python app.py add --type videos --input "https://www.youtube.com/watch?v=VIDEO_ID1,https://www.youtube.com/watch?v=VIDEO_ID2"
 
   # Search the database with a query
-  python app.py search --query "machine learning tutorials" --top_k 5
+  python app.py search --query "Your search query" --top_k 5
 
   # Run the Gradio web interface
   python app.py ui
@@ -91,6 +122,7 @@ Examples:
     parser_add = subparsers.add_parser('add', help='Add videos to the database')
     parser_add.add_argument('--type', choices=['playlist', 'videos'], required=True, help='Type of input')
     parser_add.add_argument('--input', required=True, help='Playlist URL or comma-separated video URLs')
+    parser_add.add_argument('--keep_videos', action='store_true', help='Keep videos stored locally')
 
     # Search command
     parser_search = subparsers.add_parser('search', help='Search the video database')
@@ -103,7 +135,7 @@ Examples:
     args = parser.parse_args()
 
     if args.command == 'add':
-        status = add_videos_interface(args.type, args.input)
+        status = add_videos_interface(args.type, args.input, args.keep_videos)
         print(status)
 
     elif args.command == 'search':
@@ -144,9 +176,10 @@ Examples:
                 gr.Markdown("### Add videos to the database")
                 add_option = gr.Radio(["playlist", "videos"], label="Input Type", value="playlist")
                 input_text = gr.Textbox(lines=2, placeholder="Enter playlist URL or comma-separated video URLs")
+                keep_videos = gr.Checkbox(label="Keep videos stored locally", value=True)
                 add_button = gr.Button("Add Videos")
                 add_output = gr.Textbox(label="Status")
-                add_button.click(add_videos_interface, inputs=[add_option, input_text], outputs=add_output)
+                add_button.click(add_videos_interface, inputs=[add_option, input_text, keep_videos], outputs=add_output)
 
             with gr.Tab("Search"):
                 gr.Markdown("### Search the video database")
