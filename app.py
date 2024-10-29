@@ -1,5 +1,3 @@
-# app.py
-
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -15,11 +13,11 @@ import sys
 setup_directories()
 whisper_model, embedding_model = initialize_models()
 
-def add_videos_interface(option, input_text, keep_videos):
+def add_videos_interface(input_text, keep_videos):
     """
     Interface function for adding videos to the database.
     """
-    video_links = get_video_links(option, input_text)
+    video_links = get_video_links(input_text)
     if not video_links:
         return "No valid video links provided."
     # Process videos (this will show tqdm progress bar in terminal)
@@ -105,10 +103,10 @@ def main():
         epilog="""
 Examples:
   # Add videos from a playlist and keep videos locally
-  python app.py add --type playlist --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID" --keep_videos
+  python app.py add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID" --keep_videos
 
   # Add specific videos without keeping videos locally
-  python app.py add --type videos --input "https://www.youtube.com/watch?v=VIDEO_ID1,https://www.youtube.com/watch?v=VIDEO_ID2"
+  python app.py add --input "https://www.youtube.com/watch?v=VIDEO_ID1,https://www.youtube.com/watch?v=VIDEO_ID2"
 
   # Search the database with a query
   python app.py search --query "Your search query" --top_k 5
@@ -123,7 +121,6 @@ Examples:
 
     # Add videos command
     parser_add = subparsers.add_parser('add', help='Add videos to the database')
-    parser_add.add_argument('--type', choices=['playlist', 'videos'], required=True, help='Type of input')
     parser_add.add_argument('--input', required=True, help='Playlist URL or comma-separated video URLs')
     parser_add.add_argument('--keep_videos', action='store_true', help='Keep videos stored locally')
 
@@ -138,7 +135,7 @@ Examples:
     args = parser.parse_args()
 
     if args.command == 'add':
-        status = add_videos_interface(args.type, args.input, args.keep_videos)
+        status = add_videos_interface(args.input, args.keep_videos)
         print(status)
 
     elif args.command == 'search':
@@ -177,12 +174,11 @@ Examples:
 
             with gr.Tab("Add Videos"):
                 gr.Markdown("### Add videos to the database")
-                add_option = gr.Radio(["playlist", "videos"], label="Input Type", value="playlist")
-                input_text = gr.Textbox(lines=2, placeholder="Enter playlist URL or comma-separated video URLs")
+                input_text = gr.Textbox(lines=2, placeholder="Enter playlist and/or video URLs (comma-separated)")
                 keep_videos = gr.Checkbox(label="Keep videos stored locally", value=True)
                 add_button = gr.Button("Add Videos")
                 add_output = gr.Textbox(label="Status")
-                add_button.click(add_videos_interface, inputs=[add_option, input_text, keep_videos], outputs=add_output)
+                add_button.click(add_videos_interface, inputs=[input_text, keep_videos], outputs=add_output)
 
             with gr.Tab("Search"):
                 gr.Markdown("### Search the video database")
