@@ -1,5 +1,3 @@
-# lib/functions.py
-
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -65,8 +63,7 @@ def download_video(video_url, output_dir):
     Download video to a specified directory.
     """
     ydl_opts = {
-        #'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
-        # This is setting the highest video quality allowed being 720 
+        # This is setting the highest video quality allowed being 720p
         'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4',
         'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
         'quiet': True,
@@ -216,9 +213,6 @@ def query_vector_database(query, embedding_model, top_k=5):
     results = data.iloc[indices[0]].copy()
     results['score'] = distances[0]
 
-    # Extract base video link for grouping (already have 'video_id' column)
-    # results['video_id'] = results['YouTube_link'].apply(get_video_id)
-
     # Aggregate most relevant videos by video ID
     video_relevance = (
         results.groupby('video_id')
@@ -237,23 +231,32 @@ def query_vector_database(query, embedding_model, top_k=5):
 
     return results[['text', 'YouTube_timestamped_link', 'thumbnail_path', 'score', 'video_title', 'local_video_path', 'timestamp']], video_relevance
 
-def get_video_links(option, input_text):
+def get_video_links(input_text):
     """
-    Get video links from a playlist or a list of video URLs.
+    Get video links from a list of input links, automatically detecting playlists and individual videos.
     """
     video_links = []
-    if option == 'playlist':
-        playlist_url = input_text.strip()
+    links = [link.strip() for link in input_text.strip().split(',')]
+    ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist'}
+    for link in links:
         try:
-            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist'}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                playlist_info = ydl.extract_info(playlist_url, download=False)
-                video_links = [f"https://www.youtube.com/watch?v={entry['id']}" for entry in playlist_info['entries']]
+                info = ydl.extract_info(link, download=False)
+                if '_type' in info and info['_type'] == 'playlist':
+                    # It's a playlist
+                    entries = info['entries']
+                    for entry in entries:
+                        video_id = entry.get('id')
+                        if video_id:
+                            video_link = f"https://www.youtube.com/watch?v={video_id}"
+                            video_links.append(video_link)
+                elif 'id' in info:
+                    # It's a single video
+                    video_id = info['id']
+                    video_link = f"https://www.youtube.com/watch?v={video_id}"
+                    video_links.append(video_link)
+                else:
+                    print(f"Unknown link type, skipped: {link}")
         except Exception as e:
-            print(f"Error extracting playlist: {e}")
-    elif option == 'videos':
-        video_links = [link.strip() for link in input_text.strip().split(',')]
-    else:
-        print("Invalid option.")
-    
+            print(f"Error processing link {link}: {e}")
     return video_links
