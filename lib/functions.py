@@ -1,14 +1,18 @@
 # lib/functions.py
 
 import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import re
 import yt_dlp
 import pandas as pd
 import numpy as np
 import requests
 import faiss
+import shutil
 from faster_whisper import WhisperModel
 from sentence_transformers import SentenceTransformer
+from tqdm import tqdm
 
 def initialize_models(whisper_model_size='tiny', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
     """
@@ -24,12 +28,14 @@ def setup_directories():
     """
     os.makedirs('thumbnails', exist_ok=True)
     os.makedirs('datasets', exist_ok=True)
+    os.makedirs('tmp', exist_ok=True)  # Temporary directory for downloaded videos
+    os.makedirs('videos', exist_ok=True)  # Permanent directory for videos if needed
 
 def extract_video_id_from_link(link):
     """
     Extract YouTube video ID from a link.
     """
-    video_id = re.search(r"v=([0-9A-Za-z_-]{11})", link)
+    video_id = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", link)
     return video_id.group(1) if video_id else None
 
 def get_video_id(youtube_link):
@@ -54,87 +60,143 @@ def download_thumbnail(video_id):
                 f.write(response.content)
     return thumbnail_path
 
-def extract_transcript(video_url, whisper_model):
+def download_video(video_url, output_dir):
     """
-    Transcribe the audio of a YouTube video using faster-whisper.
+    Download video to a specified directory.
     """
-    video_id = get_video_id(video_url)
-    print(f"Transcribing {video_id}...")
-
+    ydl_opts = {
+        #'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+        # This is setting the highest video quality allowed being 720 
+        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4',
+        'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
+        'quiet': True,
+        'no_warnings': True,
+        'merge_output_format': 'mp4',
+    }
     try:
-        with yt_dlp.YoutubeDL({'format': 'bestaudio'}) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-            audio_url = info['url']
-            video_title = info.get('title', '')
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(video_url, download=True)
+            video_id = info_dict.get('id', '')
+            video_title = info_dict.get('title', '')
+            ext = 'mp4'
+            filename = os.path.join(output_dir, f"{video_id}.{ext}")
+            return filename, video_id, video_title
     except Exception as e:
-        print(f"Error downloading audio: {e}")
-        return [], '', ''
+        print(f"Error downloading video {video_url}: {e}")
+        return None, None, None
 
-    segments, _ = whisper_model.transcribe(audio_url, vad_filter=True)
-
+def extract_transcript(audio_file, whisper_model):
+    """
+    Transcribe the audio file using faster-whisper.
+    """
+    segments, _ = whisper_model.transcribe(audio_file, vad_filter=True)
+    
     sentences = []
     for segment in segments:
         for sentence in segment.text.split('.'):
             sentence = sentence.strip()
             if sentence:
                 sentences.append((sentence, segment.start))
-    return sentences, video_id, video_title
+    return sentences
 
-def process_videos(video_links, whisper_model):
+def process_videos(video_links, whisper_model, embedding_model, keep_videos=False):
     """
-    Process a list of YouTube videos and extract their transcripts.
+    Process each YouTube video one by one, updating the dataset and vector database after each.
     """
-    data = []
+    # Paths for dataset and index
+    dataset_path = 'datasets/transcript_dataset.csv'
+    index_path = 'datasets/vector_index.faiss'
 
-    for link in video_links:
-        sentences, video_id, video_title = extract_transcript(link, whisper_model)
+    # Decide on video directory
+    if keep_videos:
+        video_dir = 'videos'
+    else:
+        video_dir = 'tmp'
+
+    os.makedirs(video_dir, exist_ok=True)
+
+    # Load existing dataset if it exists
+    if os.path.exists(dataset_path):
+        data = pd.read_csv(dataset_path)
+        if 'video_id' not in data.columns:
+            data['video_id'] = data['YouTube_link'].apply(get_video_id)
+            data.to_csv(dataset_path, index=False)
+        existing_video_ids = set(data['video_id'].unique())
+    else:
+        data = pd.DataFrame()
+        existing_video_ids = set()
+
+    # Load existing index if it exists
+    if os.path.exists(index_path):
+        index = faiss.read_index(index_path)
+    else:
+        index = None
+
+    for idx, link in enumerate(tqdm(video_links, desc="Processing Videos", unit="video")):
+        video_id = get_video_id(link)
+        if video_id in existing_video_ids:
+            print(f"Video {video_id} already processed. Skipping.")
+            continue  # Skip already processed videos
+
+        print(f"\nProcessing video {idx + 1}/{len(video_links)}: {link}")
+        # Download video
+        video_file, video_id, video_title = download_video(link, video_dir)
+        if not video_file:
+            continue  # Skip if download failed
+
+        # Transcribe audio
+        print(f"Transcribing video ID {video_id}...")
+        sentences = extract_transcript(video_file, whisper_model)
         thumbnail_path = download_thumbnail(video_id)
 
+        new_data = []
+        embeddings = []
         for sentence, timestamp in sentences:
             timestamped_link = f"https://www.youtube.com/watch?v={video_id}&t={int(timestamp)}s"
-            data.append({
+            local_video_path = os.path.abspath(video_file) if keep_videos else ''
+            new_data.append({
+                'video_id': video_id,
                 'text': sentence,
                 'timestamp': timestamp,
                 'YouTube_link': link,
                 'YouTube_timestamped_link': timestamped_link,
                 'thumbnail_path': thumbnail_path,
-                'video_title': video_title
+                'video_title': video_title,
+                'local_video_path': local_video_path
             })
+            # Encode the sentence to get embedding
+            embedding = embedding_model.encode(sentence).astype('float32')
+            embeddings.append(embedding)
 
-    return pd.DataFrame(data)
+        # Convert new_data to DataFrame
+        new_data_df = pd.DataFrame(new_data)
 
-def save_dataset(data):
-    """
-    Save the dataset to a CSV file.
-    """
-    dataset_path = 'datasets/transcript_dataset.csv'
-    if os.path.exists(dataset_path):
-        existing_data = pd.read_csv(dataset_path)
-        data = pd.concat([existing_data, data], ignore_index=True)
-    data.to_csv(dataset_path, index=False)
-    print(f"Dataset saved to {dataset_path}")
+        # Append new data to dataset
+        data = pd.concat([data, new_data_df], ignore_index=True)
+        # Save updated dataset
+        data.to_csv(dataset_path, index=False)
+        # Update existing_video_ids
+        existing_video_ids.add(video_id)
 
-def create_vector_database(embedding_model):
-    """
-    Create a FAISS vector database from the entire dataset.
-    """
-    dataset_path = 'datasets/transcript_dataset.csv'
-    if not os.path.exists(dataset_path):
-        print("Dataset not found. Please add videos first.")
-        return
+        # Update the FAISS index
+        embeddings = np.vstack(embeddings)
+        dimension = embeddings.shape[1]
+        if index is None:
+            # Create new index
+            index = faiss.IndexFlatL2(dimension)
+        index.add(embeddings)
+        # Save the updated index
+        faiss.write_index(index, index_path)
 
-    data = pd.read_csv(dataset_path)
-    data['embedding'] = data['text'].apply(lambda x: embedding_model.encode(x))
+        # Delete the video file after processing if not keeping videos
+        if not keep_videos:
+            os.remove(video_file)
 
-    dimension = len(data['embedding'].iloc[0])
-    index = faiss.IndexFlatL2(dimension)
-
-    embeddings = np.vstack(data['embedding'].values)
-    index.add(embeddings)
-
-    # Save the FAISS index
-    faiss.write_index(index, 'datasets/vector_index.faiss')
-    print("Vector database created and saved.")
+    # Delete the tmp directory and all its contents if not keeping videos
+    if not keep_videos and os.path.exists('tmp'):
+        shutil.rmtree('tmp')
+    print("All videos have been processed and added to the database.")
+    return data
 
 def query_vector_database(query, embedding_model, top_k=5):
     """
@@ -142,15 +204,17 @@ def query_vector_database(query, embedding_model, top_k=5):
     """
     index = faiss.read_index('datasets/vector_index.faiss')
     data = pd.read_csv('datasets/transcript_dataset.csv')
+    if 'video_id' not in data.columns:
+        data['video_id'] = data['YouTube_link'].apply(get_video_id)
 
-    query_vector = embedding_model.encode(query).reshape(1, -1)
+    query_vector = embedding_model.encode(query).astype('float32').reshape(1, -1)
     distances, indices = index.search(query_vector, top_k)
 
-    results = data.loc[indices[0]].copy()
+    results = data.iloc[indices[0]].copy()
     results['score'] = distances[0]
 
-    # Extract base video link for grouping
-    results['video_id'] = results['YouTube_link'].apply(get_video_id)
+    # Extract base video link for grouping (already have 'video_id' column)
+    # results['video_id'] = results['YouTube_link'].apply(get_video_id)
 
     # Aggregate most relevant videos by video ID
     video_relevance = (
@@ -160,15 +224,15 @@ def query_vector_database(query, embedding_model, top_k=5):
             thumbnail=('thumbnail_path', 'first'),
             text=('text', 'first'),
             original_link=('YouTube_link', 'first'),
-            video_title=('video_title', 'first')
+            video_title=('video_title', 'first'),
+            local_video_path=('local_video_path', 'first')
         )
         .sort_values(by='relevance', ascending=True)
         .head(5)
-        .reset_index(drop=True)  # Reset index here
+        .reset_index(drop=True)
     )
 
-    return results[['text', 'YouTube_timestamped_link', 'thumbnail_path', 'score', 'video_title']], video_relevance
-
+    return results[['text', 'YouTube_timestamped_link', 'thumbnail_path', 'score', 'video_title', 'local_video_path', 'timestamp']], video_relevance
 
 def get_video_links(option, input_text):
     """
@@ -178,13 +242,14 @@ def get_video_links(option, input_text):
     if option == 'playlist':
         playlist_url = input_text.strip()
         try:
-            with yt_dlp.YoutubeDL({'extract_flat': 'in_playlist'}) as ydl:
+            ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist'}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 playlist_info = ydl.extract_info(playlist_url, download=False)
-                video_links = [entry['url'] for entry in playlist_info['entries']]
+                video_links = [f"https://www.youtube.com/watch?v={entry['id']}" for entry in playlist_info['entries']]
         except Exception as e:
             print(f"Error extracting playlist: {e}")
     elif option == 'videos':
-        video_links = input_text.strip().split(',')
+        video_links = [link.strip() for link in input_text.strip().split(',')]
     else:
         print("Invalid option.")
     
