@@ -189,7 +189,7 @@ Examples:
                 gr.Markdown("### Add videos to the database")
                 input_text = gr.Textbox(lines=2, placeholder="Enter playlist, channel, and/or video URLs (comma-separated)")
                 process_channel = gr.Checkbox(label="Process entire channel when a channel URL is provided", value=False)
-                keep_videos = gr.Checkbox(label="Keep videos stored locally If checked then the ability to use whisper to transcribe will also be activated if needed", value=False)
+                keep_videos = gr.Checkbox(label="Keep videos stored locally", value=True)
                 file_upload = gr.File(label="Upload your own video/audio files", file_count="multiple", type="file")
                 add_button = gr.Button("Add Videos")
                 add_output = gr.Textbox(label="Status")
