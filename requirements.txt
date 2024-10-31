@@ -8,3 +8,5 @@ sentence-transformers
 gradio 
 argparse 
 beautifulsoup4
+pysrt 
+webvtt-py

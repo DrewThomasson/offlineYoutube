@@ -2,26 +2,35 @@ import os
 import multiprocessing
 import gradio as gr
 import argparse
+import pandas as pd  # Added to handle NaN values
 from lib.functions import (
     initialize_models, setup_directories, process_videos,
     query_vector_database, get_video_links
 )
 import sys
 
-def add_videos_interface(input_text, keep_videos):
+def add_videos_interface(input_text, uploaded_files, process_channel, keep_videos):
     """
     Interface function for adding videos to the database.
     """
-    video_links = get_video_links(input_text)
-    if not video_links:
-        return "No valid video links provided."
-    # Process videos (this will show tqdm progress bar in terminal)
-    data, video_titles = process_videos(video_links, whisper_model, embedding_model, keep_videos=keep_videos)
+    video_links = get_video_links(input_text, process_channel)
+    uploaded_files_paths = []
+    if uploaded_files:
+        os.makedirs('uploaded_files', exist_ok=True)
+        for uploaded_file in uploaded_files:
+            file_path = os.path.join('uploaded_files', os.path.basename(uploaded_file.name))
+            with open(file_path, 'wb') as f:
+                f.write(uploaded_file.read())
+            uploaded_files_paths.append(file_path)
+    if not video_links and not uploaded_files_paths:
+        return "No valid video links or files provided."
+    # Process videos and uploaded files
+    data, video_titles = process_videos(video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=keep_videos)
     
     # Prepare a message with the video titles
     titles_message = "\n".join(f"- {title}" for title in video_titles)
     return f"Videos processed and database updated.\nAdded Videos:\n{titles_message}"
-
+    
 def search_interface(query_text, top_k):
     """
     Interface function for searching the database.
@@ -35,10 +44,14 @@ def search_interface(query_text, top_k):
     for idx, row in top_videos.iterrows():
         rank = idx + 1  # Since idx is now sequential
         # Check if local video exists
-        local_video_exists = os.path.exists(row['local_video_path']) if row['local_video_path'] else False
+        local_video_path = row['local_video_path']
+        if isinstance(local_video_path, str) and local_video_path and not pd.isnull(local_video_path):
+            local_video_exists = os.path.exists(local_video_path)
+        else:
+            local_video_exists = False
         local_video_player = ''
         if local_video_exists:
-            local_video_url = 'file/' + row['local_video_path']
+            local_video_url = 'file/' + local_video_path
             local_video_player = f"""
             <details>
                 <summary>Show Local Video</summary>
@@ -65,10 +78,14 @@ def search_interface(query_text, top_k):
     detailed_html = "<h1>Detailed Results:</h1>"
     for _, row in results.iterrows():
         # Check if local video exists
-        local_video_exists = os.path.exists(row['local_video_path']) if row['local_video_path'] else False
+        local_video_path = row['local_video_path']
+        if isinstance(local_video_path, str) and local_video_path and not pd.isnull(local_video_path):
+            local_video_exists = os.path.exists(local_video_path)
+        else:
+            local_video_exists = False
         local_video_player = ''
         if local_video_exists:
-            local_video_url = 'file/' + row['local_video_path']
+            local_video_url = 'file/' + local_video_path
             timestamp = int(row['timestamp'])
             local_video_player = f"""
             <details>
@@ -117,6 +134,7 @@ Examples:
     # Add videos command
     parser_add = subparsers.add_parser('add', help='Add videos to the database')
     parser_add.add_argument('--input', required=True, help='Playlist URL or comma-separated video URLs')
+    parser_add.add_argument('--process_channel', action='store_true', help='Process entire channel when a channel URL is provided')
     parser_add.add_argument('--keep_videos', action='store_true', help='Keep videos stored locally')
 
     # Search command
@@ -130,7 +148,7 @@ Examples:
     args = parser.parse_args()
 
     if args.command == 'add':
-        status = add_videos_interface(args.input, args.keep_videos)
+        status = add_videos_interface(args.input, [], args.process_channel, args.keep_videos)
         print(status)
 
     elif args.command == 'search':
@@ -164,16 +182,18 @@ Examples:
 
     else:
         # Run Gradio interface if no command is provided or 'ui' command is used
-        with gr.Blocks() as demo:
-            gr.Markdown("# YouTube Video Search Application")
+        with gr.Blocks(theme=gr.themes.Soft()) as demo:
+            gr.Markdown("# 🎥 YouTube Video Search Application")
 
             with gr.Tab("Add Videos"):
                 gr.Markdown("### Add videos to the database")
-                input_text = gr.Textbox(lines=2, placeholder="Enter playlist and/or video URLs (comma-separated)")
+                input_text = gr.Textbox(lines=2, placeholder="Enter playlist, channel, and/or video URLs (comma-separated)")
+                process_channel = gr.Checkbox(label="Process entire channel when a channel URL is provided", value=False)
                 keep_videos = gr.Checkbox(label="Keep videos stored locally", value=True)
+                file_upload = gr.File(label="Upload your own video/audio files", file_count="multiple", type="file")
                 add_button = gr.Button("Add Videos")
                 add_output = gr.Textbox(label="Status")
-                add_button.click(add_videos_interface, inputs=[input_text, keep_videos], outputs=add_output)
+                add_button.click(add_videos_interface, inputs=[input_text, file_upload, process_channel, keep_videos], outputs=add_output)
 
             with gr.Tab("Search"):
                 gr.Markdown("### Search the video database")

@@ -11,6 +11,9 @@ import shutil
 from faster_whisper import WhisperModel
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
+import pysrt
+import subprocess
+import webvtt
 
 def initialize_models(whisper_model_size='tiny', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
     """
@@ -28,6 +31,7 @@ def setup_directories():
     os.makedirs('datasets', exist_ok=True)
     os.makedirs('tmp', exist_ok=True)  # Temporary directory for downloaded videos
     os.makedirs('videos', exist_ok=True)  # Permanent directory for videos if needed
+    os.makedirs('uploaded_files', exist_ok=True)  # Directory for uploaded files
 
 def extract_video_id_from_link(link):
     """
@@ -58,47 +62,121 @@ def download_thumbnail(video_id):
                 f.write(response.content)
     return thumbnail_path
 
-def download_video(video_url, output_dir):
+def download_video(video_url, output_dir, keep_video=True):
     """
-    Download video to a specified directory.
+    Download video to a specified directory, attempt to download subtitles.
     """
     ydl_opts = {
-        # This is setting the highest video quality allowed being 720p
         'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4',
         'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
         'quiet': True,
         'no_warnings': True,
         'merge_output_format': 'mp4',
+        'writesubtitles': True,          # Attempt to download subtitles
+        'writeautomaticsub': True,       # Download auto-generated subtitles if available
+        'subtitleslangs': ['en'],        # English subtitles
+        'skip_download': not keep_video, # Skip downloading the video if keep_video is False
     }
+    # We won't set 'subtitlesformat' here to allow yt-dlp to download the default format available
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(video_url, download=True)
             video_id = info_dict.get('id', '')
             video_title = info_dict.get('title', '')
-            ext = 'mp4'
-            filename = os.path.join(output_dir, f"{video_id}.{ext}")
-            return filename, video_id, video_title
+            if keep_video:
+                ext = 'mp4'
+                filename = os.path.join(output_dir, f"{video_id}.{ext}")
+            else:
+                filename = None
+
+            # Attempt to find the subtitle file (.srt or .vtt)
+            subtitle_file = None
+            subtitles_available = False
+            # Check for .srt and .vtt files
+            possible_extensions = ['en.srt', 'en.vtt']
+            for ext in possible_extensions:
+                possible_subtitle_file = os.path.join(output_dir, f"{video_id}.{ext}")
+                if os.path.exists(possible_subtitle_file):
+                    subtitle_file = possible_subtitle_file
+                    subtitles_available = True
+                    break
+
+            # If subtitles are not available, attempt with subprocess
+            if not subtitles_available:
+                print("Subtitles not found. Attempting to download subtitles using alternative method.")
+                cmd = [
+                    'yt-dlp', '--skip-download', '--write-sub', '--write-auto-sub',
+                    '--sub-lang', 'en', '--output',
+                    os.path.join(output_dir, '%(title)s [%(id)s].%(ext)s'),
+                    video_url
+                ]
+                subprocess.run(cmd, check=False)
+
+                # Attempt to find the subtitle file
+                video_title_safe = re.sub(r'[\\/*?:"<>|]', '', video_title)
+                for ext in possible_extensions:
+                    alternative_subtitle_file = os.path.join(output_dir, f"{video_title_safe} [{video_id}].{ext}")
+                    if os.path.exists(alternative_subtitle_file):
+                        subtitle_file = alternative_subtitle_file
+                        subtitles_available = True
+                        break
+
+            return filename, video_id, video_title, subtitles_available, subtitle_file
     except Exception as e:
         print(f"Error downloading video {video_url}: {e}")
-        return None, None, None
+        return None, None, None, False, None
 
-def extract_transcript(audio_file, whisper_model):
+def extract_transcript(audio_file, whisper_model, subtitles_available=False, subtitle_file=None):
     """
-    Transcribe the audio file using faster-whisper.
+    Transcribe the audio file using faster-whisper or read subtitles.
     """
-    segments, _ = whisper_model.transcribe(audio_file, vad_filter=True)
-    
-    sentences = []
-    for segment in segments:
-        for sentence in segment.text.split('.'):
-            sentence = sentence.strip()
-            if sentence:
-                sentences.append((sentence, segment.start))
+    if subtitles_available and subtitle_file:
+        # Read subtitles file
+        sentences = extract_transcript_from_subtitles(subtitle_file)
+    elif audio_file:
+        # Transcribe using Whisper
+        print("Using Whisper to transcribe audio.")
+        segments, _ = whisper_model.transcribe(audio_file, vad_filter=True)
+        sentences = []
+        for segment in segments:
+            for sentence in segment.text.split('.'):
+                sentence = sentence.strip()
+                if sentence:
+                    sentences.append((sentence, segment.start))
+    else:
+        print("No subtitles or audio file available for transcription.")
+        sentences = []
     return sentences
 
-def process_videos(video_links, whisper_model, embedding_model, keep_videos=False):
+def extract_transcript_from_subtitles(subtitle_file):
     """
-    Process each YouTube video one by one, updating the dataset and vector database after each.
+    Extract transcript from subtitles file (.srt or .vtt format).
+    """
+    sentences = []
+    try:
+        if subtitle_file.endswith('.srt'):
+            subs = pysrt.open(subtitle_file)
+            for sub in subs:
+                text = sub.text.strip().replace('\n', ' ')
+                start = sub.start.ordinal / 1000.0  # Convert milliseconds to seconds
+                if text:
+                    sentences.append((text, start))
+        elif subtitle_file.endswith('.vtt'):
+            subs = webvtt.read(subtitle_file)
+            for caption in subs:
+                text = caption.text.strip().replace('\n', ' ')
+                start = caption.start_in_seconds
+                if text:
+                    sentences.append((text, start))
+        else:
+            print(f"Unsupported subtitle format for file: {subtitle_file}")
+    except Exception as e:
+        print(f"Error reading subtitles file {subtitle_file}: {e}")
+    return sentences
+
+def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=False):
+    """
+    Process each YouTube video and uploaded files one by one, updating the dataset and vector database after each.
     """
     # Paths for dataset and index
     video_titles = set()  # Use a set to store unique video titles
@@ -130,72 +208,142 @@ def process_videos(video_links, whisper_model, embedding_model, keep_videos=Fals
     else:
         index = None
 
-    for idx, link in enumerate(tqdm(video_links, desc="Processing Videos", unit="video")):
-        video_id = get_video_id(link)
-        if video_id in existing_video_ids:
-            print(f"Video {video_id} already processed. Skipping.")
-            continue  # Skip already processed videos
+    # Process video links
+    if video_links:
+        for idx, link in enumerate(tqdm(video_links, desc="Processing Videos", unit="video")):
+            video_id = get_video_id(link)
+            if video_id in existing_video_ids:
+                print(f"Video {video_id} already processed. Skipping.")
+                continue  # Skip already processed videos
 
-        print(f"\nProcessing video {idx + 1}/{len(video_links)}: {link}")
-        # Download video
-        video_file, video_id, video_title = download_video(link, video_dir)
-        if not video_file:
-            continue  # Skip if download failed
+            print(f"\nProcessing video {idx + 1}/{len(video_links)}: {link}")
+            # Download video
+            video_file, video_id, video_title, subtitles_available, subtitle_file = download_video(link, video_dir, keep_video=keep_videos)
+            if not subtitles_available and not video_file:
+                print(f"Cannot process video {video_id} because subtitles are not available and video download is disabled.")
+                continue  # Skip this video
 
-        # Transcribe audio
-        print(f"Transcribing video ID {video_id}...")
-        sentences = extract_transcript(video_file, whisper_model)
-        thumbnail_path = download_thumbnail(video_id)
+            # Transcribe audio or read subtitles
+            print(f"Extracting transcript for video ID {video_id}...")
+            if subtitles_available:
+                print("Subtitles found. Using subtitles for transcript.")
+            sentences = extract_transcript(video_file, whisper_model, subtitles_available, subtitle_file)
+            if not sentences:
+                print(f"No transcript available for video {video_id}. Skipping.")
+                continue
+            thumbnail_path = download_thumbnail(video_id)
 
-        new_data = []
-        embeddings = []
-        for sentence, timestamp in sentences:
-            timestamped_link = f"https://www.youtube.com/watch?v={video_id}&t={int(timestamp)}s"
-            local_video_path = os.path.abspath(video_file) if keep_videos else ''
-            new_data.append({
-                'video_id': video_id,
-                'text': sentence,
-                'timestamp': timestamp,
-                'YouTube_link': link,
-                'YouTube_timestamped_link': timestamped_link,
-                'thumbnail_path': thumbnail_path,
-                'video_title': video_title,
-                'local_video_path': local_video_path
-            })
-            video_titles.add(video_title)
-            # Encode the sentence to get embedding
-            embedding = embedding_model.encode(sentence).astype('float32')
-            embeddings.append(embedding)
+            new_data = []
+            embeddings = []
+            for sentence, timestamp in sentences:
+                timestamped_link = f"https://www.youtube.com/watch?v={video_id}&t={int(timestamp)}s"
+                local_video_path = os.path.abspath(video_file) if keep_videos and video_file else ''
+                new_data.append({
+                    'video_id': video_id,
+                    'text': sentence,
+                    'timestamp': timestamp,
+                    'YouTube_link': link,
+                    'YouTube_timestamped_link': timestamped_link,
+                    'thumbnail_path': thumbnail_path,
+                    'video_title': video_title,
+                    'local_video_path': local_video_path
+                })
+                video_titles.add(video_title)
+                # Encode the sentence to get embedding
+                embedding = embedding_model.encode(sentence).astype('float32')
+                embeddings.append(embedding)
 
-        # Convert new_data to DataFrame
-        new_data_df = pd.DataFrame(new_data)
+            # Convert new_data to DataFrame
+            new_data_df = pd.DataFrame(new_data)
 
-        # Append new data to dataset
-        data = pd.concat([data, new_data_df], ignore_index=True)
-        # Save updated dataset
-        data.to_csv(dataset_path, index=False)
-        # Update existing_video_ids
-        existing_video_ids.add(video_id)
+            # Append new data to dataset
+            data = pd.concat([data, new_data_df], ignore_index=True)
+            # Save updated dataset
+            data.to_csv(dataset_path, index=False)
+            # Update existing_video_ids
+            existing_video_ids.add(video_id)
 
-        # Update the FAISS index
-        embeddings = np.vstack(embeddings)
-        dimension = embeddings.shape[1]
-        if index is None:
-            # Create new index
-            index = faiss.IndexFlatL2(dimension)
-        index.add(embeddings)
-        # Save the updated index
-        faiss.write_index(index, index_path)
+            # Update the FAISS index
+            embeddings = np.vstack(embeddings)
+            dimension = embeddings.shape[1]
+            if index is None:
+                # Create new index
+                index = faiss.IndexFlatL2(dimension)
+            index.add(embeddings)
+            # Save the updated index
+            faiss.write_index(index, index_path)
 
-        # Delete the video file after processing if not keeping videos
-        if not keep_videos:
-            os.remove(video_file)
+            # Delete the video file after processing if not keeping videos
+            if not keep_videos and video_file:
+                os.remove(video_file)
+            if subtitles_available and subtitle_file:
+                os.remove(subtitle_file)
+
+    # Process uploaded files
+    if uploaded_files_paths:
+        for idx, file_path in enumerate(tqdm(uploaded_files_paths, desc="Processing Uploaded Files", unit="file")):
+            video_id = os.path.splitext(os.path.basename(file_path))[0]
+            video_title = video_id
+            link = ''
+            video_file = file_path
+            subtitles_available = False
+            subtitle_file = None
+            thumbnail_path = ''
+            print(f"\nProcessing uploaded file {idx + 1}/{len(uploaded_files_paths)}: {file_path}")
+
+            # Transcribe audio
+            print(f"Transcribing file {video_id}...")
+            sentences = extract_transcript(video_file, whisper_model, subtitles_available=False)
+            if not sentences:
+                print(f"No transcript available for file {video_id}. Skipping.")
+                continue
+            new_data = []
+            embeddings = []
+            for sentence, timestamp in sentences:
+                timestamped_link = ''
+                local_video_path = os.path.abspath(video_file)  # Always keep uploaded files locally
+                new_data.append({
+                    'video_id': video_id,
+                    'text': sentence,
+                    'timestamp': timestamp,
+                    'YouTube_link': link,
+                    'YouTube_timestamped_link': timestamped_link,
+                    'thumbnail_path': thumbnail_path,
+                    'video_title': video_title,
+                    'local_video_path': local_video_path
+                })
+                video_titles.add(video_title)
+                # Encode the sentence to get embedding
+                embedding = embedding_model.encode(sentence).astype('float32')
+                embeddings.append(embedding)
+
+            # Convert new_data to DataFrame
+            new_data_df = pd.DataFrame(new_data)
+
+            # Append new data to dataset
+            data = pd.concat([data, new_data_df], ignore_index=True)
+            # Save updated dataset
+            data.to_csv(dataset_path, index=False)
+            # Update existing_video_ids
+            existing_video_ids.add(video_id)
+
+            # Update the FAISS index
+            embeddings = np.vstack(embeddings)
+            dimension = embeddings.shape[1]
+            if index is None:
+                # Create new index
+                index = faiss.IndexFlatL2(dimension)
+            index.add(embeddings)
+            # Save the updated index
+            faiss.write_index(index, index_path)
+
+            # Uploaded files are always kept locally
 
     # Delete the tmp directory and all its contents if not keeping videos
     if not keep_videos and os.path.exists('tmp'):
         shutil.rmtree('tmp')
 
-    print("All videos have been processed and added to the database.")
+    print("All videos and uploaded files have been processed and added to the database.")
     return data, list(video_titles)  # Convert set to list before returning
 
 def query_vector_database(query, embedding_model, top_k=5):
@@ -231,20 +379,43 @@ def query_vector_database(query, embedding_model, top_k=5):
 
     return results[['text', 'YouTube_timestamped_link', 'thumbnail_path', 'score', 'video_title', 'local_video_path', 'timestamp']], video_relevance
 
-def get_video_links(input_text):
+def is_channel_url(url):
     """
-    Get video links from a list of input links, automatically detecting playlists and individual videos.
+    Check if a URL is a YouTube channel URL.
+    """
+    return any(x in url for x in ['/channel/', '/c/', '/user/'])
+
+def get_video_links(input_text, process_channel=False):
+    """
+    Get video links from a list of input links, automatically detecting playlists, channels, and individual videos.
     """
     video_links = []
-    links = [link.strip() for link in input_text.strip().split(',')]
-    ydl_opts = {'quiet': True, 'no_warnings': True, 'extract_flat': 'in_playlist'}
+    if not input_text.strip():
+        return video_links
+    links = [link.strip() for link in input_text.strip().split(',') if link.strip()]
     for link in links:
         try:
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'extract_flat': 'in_playlist',
+            }
+            if is_channel_url(link):
+                if not process_channel:
+                    print(f"Channel URL detected: {link}")
+                    print("Process Channel option is not enabled. Skipping channel.")
+                    continue
+                else:
+                    # For channels, get all videos
+                    ydl_opts['playlistend'] = None
+            else:
+                # For non-channels, get all videos in playlists
+                ydl_opts['playlistend'] = None
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
                 if '_type' in info and info['_type'] == 'playlist':
-                    # It's a playlist
-                    entries = info['entries']
+                    # It's a playlist or a channel
+                    entries = info.get('entries', [])
                     for entry in entries:
                         video_id = entry.get('id')
                         if video_id:
