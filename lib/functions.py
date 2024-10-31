@@ -62,40 +62,65 @@ def download_thumbnail(video_id):
                 f.write(response.content)
     return thumbnail_path
 
-def download_video(video_url, output_dir, keep_video=True):
+def download_video(video_url, output_dir, keep_video=True, download_audio_only=False):
     """
-    Download video to a specified directory, attempt to download subtitles.
+    Download video or audio to a specified directory, attempt to download subtitles.
+    """
+    # First, attempt to download subtitles only
+    subtitles_available, subtitle_file, video_id, video_title = download_subtitles(video_url, output_dir)
+    
+    # Decide whether to download video or audio based on subtitles availability and user preference
+    if subtitles_available:
+        print("Subtitles found. Proceeding without downloading media.")
+        video_file = None
+    else:
+        # Need to download media for transcription
+        ydl_opts = {
+            'format': 'bestaudio/best' if download_audio_only else 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4',
+            'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
+            'quiet': True,
+            'no_warnings': True,
+            'merge_output_format': 'mp4' if not download_audio_only else None,
+            'skip_download': False,          # Always download the audio/video needed
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(video_url, download=True)
+                video_id = info_dict.get('id', '')
+                video_title = info_dict.get('title', '')
+                # Get the actual filename
+                filename = ydl.prepare_filename(info_dict)
+                video_file = filename
+        except Exception as e:
+            print(f"Error downloading media for video {video_url}: {e}")
+            video_file = None
+    
+    return video_file, video_id, video_title, subtitles_available, subtitle_file
+
+def download_subtitles(video_url, output_dir):
+    """
+    Attempt to download subtitles for a video without downloading the video.
     """
     ydl_opts = {
-        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4',
-        'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
+        'skip_download': True,
+        'writesubtitles': True,
+        'writeautomaticsub': True,
+        'subtitleslangs': ['en'],
         'quiet': True,
-        'no_warnings': True,
-        'merge_output_format': 'mp4',
-        'writesubtitles': True,          # Attempt to download subtitles
-        'writeautomaticsub': True,       # Download auto-generated subtitles if available
-        'subtitleslangs': ['en'],        # English subtitles
-        'skip_download': not keep_video, # Skip downloading the video if keep_video is False
+        'outtmpl': os.path.join(output_dir, '%(id)s'),
     }
-    # We won't set 'subtitlesformat' here to allow yt-dlp to download the default format available
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(video_url, download=True)
+            info_dict = ydl.extract_info(video_url, download=False)
             video_id = info_dict.get('id', '')
             video_title = info_dict.get('title', '')
-            if keep_video:
-                ext = 'mp4'
-                filename = os.path.join(output_dir, f"{video_id}.{ext}")
-            else:
-                filename = None
 
-            # Attempt to find the subtitle file (.srt or .vtt)
+            # Check for subtitle files
             subtitle_file = None
             subtitles_available = False
-            # Check for .srt and .vtt files
             possible_extensions = ['en.srt', 'en.vtt']
-            for ext in possible_extensions:
-                possible_subtitle_file = os.path.join(output_dir, f"{video_id}.{ext}")
+            for ext_sub in possible_extensions:
+                possible_subtitle_file = os.path.join(output_dir, f"{video_id}.{ext_sub}")
                 if os.path.exists(possible_subtitle_file):
                     subtitle_file = possible_subtitle_file
                     subtitles_available = True
@@ -107,24 +132,24 @@ def download_video(video_url, output_dir, keep_video=True):
                 cmd = [
                     'yt-dlp', '--skip-download', '--write-sub', '--write-auto-sub',
                     '--sub-lang', 'en', '--output',
-                    os.path.join(output_dir, '%(title)s [%(id)s].%(ext)s'),
+                    os.path.join(output_dir, '%(id)s'),
                     video_url
                 ]
                 subprocess.run(cmd, check=False)
 
                 # Attempt to find the subtitle file
-                video_title_safe = re.sub(r'[\\/*?:"<>|]', '', video_title)
-                for ext in possible_extensions:
-                    alternative_subtitle_file = os.path.join(output_dir, f"{video_title_safe} [{video_id}].{ext}")
-                    if os.path.exists(alternative_subtitle_file):
-                        subtitle_file = alternative_subtitle_file
+                for ext_sub in possible_extensions:
+                    possible_subtitle_file = os.path.join(output_dir, f"{video_id}.{ext_sub}")
+                    if os.path.exists(possible_subtitle_file):
+                        subtitle_file = possible_subtitle_file
                         subtitles_available = True
                         break
 
-            return filename, video_id, video_title, subtitles_available, subtitle_file
+            return subtitles_available, subtitle_file, video_id, video_title
+
     except Exception as e:
-        print(f"Error downloading video {video_url}: {e}")
-        return None, None, None, False, None
+        print(f"Error downloading subtitles for video {video_url}: {e}")
+        return False, None, None, None
 
 def extract_transcript(audio_file, whisper_model, subtitles_available=False, subtitle_file=None):
     """
@@ -136,13 +161,17 @@ def extract_transcript(audio_file, whisper_model, subtitles_available=False, sub
     elif audio_file:
         # Transcribe using Whisper
         print("Using Whisper to transcribe audio.")
-        segments, _ = whisper_model.transcribe(audio_file, vad_filter=True)
         sentences = []
-        for segment in segments:
-            for sentence in segment.text.split('.'):
-                sentence = sentence.strip()
-                if sentence:
-                    sentences.append((sentence, segment.start))
+        try:
+            segments, _ = whisper_model.transcribe(audio_file, vad_filter=True)
+            for segment in segments:
+                for sentence in segment.text.split('.'):
+                    sentence = sentence.strip()
+                    if sentence:
+                        sentences.append((sentence, segment.start))
+        except Exception as e:
+            print(f"Error during transcription: {e}")
+            sentences = []
     else:
         print("No subtitles or audio file available for transcription.")
         sentences = []
@@ -217,16 +246,25 @@ def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_m
                 continue  # Skip already processed videos
 
             print(f"\nProcessing video {idx + 1}/{len(video_links)}: {link}")
-            # Download video
-            video_file, video_id, video_title, subtitles_available, subtitle_file = download_video(link, video_dir, keep_video=keep_videos)
+            # Determine if we need to download audio-only
+            download_audio_only = not keep_videos
+
+            # Download video or audio and subtitles
+            video_file, video_id, video_title, subtitles_available, subtitle_file = download_video(
+                link, video_dir, keep_video=keep_videos, download_audio_only=download_audio_only
+            )
+
             if not subtitles_available and not video_file:
-                print(f"Cannot process video {video_id} because subtitles are not available and video download is disabled.")
-                continue  # Skip this video
+                print(f"Cannot process video {video_id} because neither subtitles nor audio/video are available.")
+                continue
 
             # Transcribe audio or read subtitles
             print(f"Extracting transcript for video ID {video_id}...")
             if subtitles_available:
                 print("Subtitles found. Using subtitles for transcript.")
+            else:
+                print("Subtitles not found. Using Whisper to transcribe audio.")
+
             sentences = extract_transcript(video_file, whisper_model, subtitles_available, subtitle_file)
             if not sentences:
                 print(f"No transcript available for video {video_id}. Skipping.")
@@ -273,10 +311,10 @@ def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_m
             # Save the updated index
             faiss.write_index(index, index_path)
 
-            # Delete the video file after processing if not keeping videos
-            if not keep_videos and video_file:
+            # Delete the audio/video file after processing if not keeping videos
+            if not keep_videos and video_file and os.path.exists(video_file):
                 os.remove(video_file)
-            if subtitles_available and subtitle_file:
+            if subtitles_available and subtitle_file and os.path.exists(subtitle_file):
                 os.remove(subtitle_file)
 
     # Process uploaded files
