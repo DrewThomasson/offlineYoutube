@@ -44,7 +44,7 @@ This application allows users to **extract transcripts from YouTube videos**, **
 Ensure you have Python installed (>= 3.8). Then, install the required dependencies:
 
 ```bash
-pip install -e .
+pip install offlineyoutube
 ```
 
 ---
