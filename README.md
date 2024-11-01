@@ -35,6 +35,7 @@ This application allows users to **extract transcripts from YouTube videos**, **
 - **View detailed results with timestamps and direct links.**
 
 <img width="635" alt="Screenshot 2024-11-01 at 11 18 01 AM" src="https://github.com/user-attachments/assets/c2c21482-dbf6-4515-b1ca-d1bf650e3c48">
+<img width="635" alt="Screenshot 2024-11-01 at 12 05 34 PM" src="https://github.com/user-attachments/assets/eb881286-a827-410b-a484-641b78ea1e0e">
 
 ---
 
