@@ -1,4 +1,4 @@
-# **YouTube Video Search Application**
+# **OFFLINE YouTube Video Search Application**
 
 This application allows users to **extract transcripts from YouTube videos**, **create searchable vector databases**, and **perform semantic searches** using a **Gradio web interface** or **command-line interface (CLI)**. It's powered by `faster-whisper` for transcription, `FAISS` for vector search, and `sentence-transformers` for text embeddings.
 
