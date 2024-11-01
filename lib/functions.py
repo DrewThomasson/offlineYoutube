@@ -70,18 +70,16 @@ def download_video(video_url, output_dir, keep_video=True, download_audio_only=F
     subtitles_available, subtitle_file, video_id, video_title = download_subtitles(video_url, output_dir)
     
     # Decide whether to download video or audio based on subtitles availability and user preference
-    if subtitles_available:
-        print("Subtitles found. Proceeding without downloading media.")
-        video_file = None
-    else:
-        # Need to download media for transcription
+    # Modified logic to download video if keep_video is True
+    if keep_video:
+        # Need to download the video regardless of subtitles availability
         ydl_opts = {
-            'format': 'bestaudio/best' if download_audio_only else 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4',
+            'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4',
             'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
             'quiet': True,
             'no_warnings': True,
-            'merge_output_format': 'mp4' if not download_audio_only else None,
-            'skip_download': False,          # Always download the audio/video needed
+            'merge_output_format': 'mp4',
+            'skip_download': False,
         }
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -94,7 +92,32 @@ def download_video(video_url, output_dir, keep_video=True, download_audio_only=F
         except Exception as e:
             print(f"Error downloading media for video {video_url}: {e}")
             video_file = None
-    
+    else:
+        # If subtitles are available and not keeping video, we don't need to download anything
+        if subtitles_available:
+            print("Subtitles found. Proceeding without downloading media.")
+            video_file = None
+        else:
+            # Need to download audio for transcription
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
+                'quiet': True,
+                'no_warnings': True,
+                'skip_download': False,
+            }
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info_dict = ydl.extract_info(video_url, download=True)
+                    video_id = info_dict.get('id', '')
+                    video_title = info_dict.get('title', '')
+                    # Get the actual filename
+                    filename = ydl.prepare_filename(info_dict)
+                    video_file = filename
+            except Exception as e:
+                print(f"Error downloading audio for video {video_url}: {e}")
+                video_file = None
+
     return video_file, video_id, video_title, subtitles_available, subtitle_file
 
 def download_subtitles(video_url, output_dir):
