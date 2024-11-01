@@ -1,9 +1,9 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="offline_youtube",
-    version="0.1",
-    packages=find_packages(include=["lib", "lib.*"]),
+    name="offlineyoutube",
+    version="2.1.2",
+    packages=find_packages(),
     include_package_data=True,
     install_requires=[
         "yt-dlp",
@@ -21,8 +21,19 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "offlineYoutube=app:main"
+            "offlineYoutube=offlineyoutube.app:main"
         ]
     },
     python_requires=">=3.8",
+    author="Andrew Phillip Thomasson",
+    author_email="drew.thomasson100@gmail.com",
+    description="A YouTube video search and management tool with a Gradio interface",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/DrewThomasson/offlineYoutube",
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
+        "Operating System :: OS Independent",
+    ],
 )
