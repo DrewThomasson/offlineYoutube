@@ -26,7 +26,7 @@ This application allows users to **extract transcripts from YouTube videos**, **
 - **Option to process entire channels when a channel URL is provided.**
 - **Option to keep videos stored locally or not.**
 
-<img width="520" alt="Add Videos Tab" src="path/to/your/add_videos_tab_screenshot.png">
+<img width="628" alt="Screenshot 2024-11-01 at 11 14 22 AM" src="https://github.com/user-attachments/assets/00807fa3-ac86-4940-a72a-60fa267577d0">
 
 ### **Search Tab**
 
@@ -34,7 +34,7 @@ This application allows users to **extract transcripts from YouTube videos**, **
 - **View top relevant videos with thumbnails and play local videos if available.**
 - **View detailed results with timestamps and direct links.**
 
-<img width="526" alt="Search Tab" src="path/to/your/search_tab_screenshot.png">
+<img width="635" alt="Screenshot 2024-11-01 at 11 18 01 AM" src="https://github.com/user-attachments/assets/c2c21482-dbf6-4515-b1ca-d1bf650e3c48">
 
 ---
 
