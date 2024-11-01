@@ -5,7 +5,7 @@ requests
 faiss-cpu 
 faster-whisper 
 sentence-transformers 
-gradio 
+gradio==3.36.1
 argparse 
 beautifulsoup4
 pysrt 
