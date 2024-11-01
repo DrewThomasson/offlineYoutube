@@ -41,10 +41,10 @@ This application allows users to **extract transcripts from YouTube videos**, **
 
 ## **Installation**
 
-Ensure you have Python installed (>= 3.7). Then, install the required dependencies:
+Ensure you have Python installed (>= 3.8). Then, install the required dependencies:
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ---
@@ -60,13 +60,13 @@ The app provides **two ways to interact**:
 Launch the web interface:
 
 ```bash
-python app.py ui
+offlineYoutube ui
 ```
 
 or simply:
 
 ```bash
-python app.py
+offlineYoutube
 ```
 
 Then, open the URL (usually `http://127.0.0.1:7860`) in your browser.
@@ -97,13 +97,13 @@ The CLI provides more flexibility for programmatic use.
 Use the `--help` command to view available commands and examples:
 
 ```bash
-python app.py --help
+offlineYoutube --help
 ```
 
 **Output:**
 
 ```
-usage: app.py [-h] {add,search,ui} ...
+usage: offlineYoutube [-h] {add,search,ui} ...
 
 YouTube Video Search Application
 
@@ -118,19 +118,19 @@ optional arguments:
 
 Examples:
   # Add videos from a playlist and keep videos locally
-  python app.py add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID" --keep_videos
+  offlineYoutube add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID" --keep_videos
 
   # Add specific videos without keeping videos locally
-  python app.py add --input "https://www.youtube.com/watch?v=VIDEO_ID1,https://www.youtube.com/watch?v=VIDEO_ID2"
+  offlineYoutube add --input "https://www.youtube.com/watch?v=VIDEO_ID1,https://www.youtube.com/watch?v=VIDEO_ID2"
 
   # Add videos from a channel (process entire channel)
-  python app.py add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
+  offlineYoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
 
   # Search the database with a query
-  python app.py search --query "Your search query" --top_k 5
+  offlineYoutube search --query "Your search query" --top_k 5
 
   # Run the Gradio web interface
-  python app.py ui
+  offlineYoutube ui
 ```
 
 ---
@@ -142,25 +142,25 @@ Examples:
 - **Add Playlists and Videos:**
 
    ```bash
-   python app.py add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID,https://www.youtube.com/watch?v=VIDEO_ID"
+   offlineYoutube add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID,https://www.youtube.com/watch?v=VIDEO_ID"
    ```
 
 - **Add Specific Videos Without Keeping Them Locally:**
 
    ```bash
-   python app.py add --input "https://www.youtube.com/watch?v=dQw4w9WgXcQ,https://www.youtube.com/watch?v=9bZkp7q19f0"
+   offlineYoutube add --input "https://www.youtube.com/watch?v=dQw4w9WgXcQ,https://www.youtube.com/watch?v=9bZkp7q19f0"
    ```
 
 - **Add Videos from a Channel (Process Entire Channel):**
 
    ```bash
-   python app.py add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
+   offlineYoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
    ```
 
 - **Add Videos and Keep Videos Stored Locally:**
 
    ```bash
-   python app.py add --input "https://www.youtube.com/watch?v=VIDEO_ID" --keep_videos
+   offlineYoutube add --input "https://www.youtube.com/watch?v=VIDEO_ID" --keep_videos
    ```
 
 #### **2. Searching the Database**
@@ -168,7 +168,7 @@ Examples:
 - **Perform a Search:**
 
    ```bash
-   python app.py search --query "machine learning tutorials" --top_k 5
+   offlineYoutube search --query "machine learning tutorials" --top_k 5
    ```
 
 ---
@@ -201,13 +201,13 @@ Examples:
 Simply provide a comma-separated list of URLs, and the app will automatically detect and process each link:
 
 ```bash
-python app.py add --input "https://www.youtube.com/playlist?list=PLAYLIST_ID1,https://www.youtube.com/watch?v=VIDEO_ID,https://www.youtube.com/channel/CHANNEL_ID"
+offlineYoutube add --input "https://www.youtube.com/playlist?list=PLAYLIST_ID1,https://www.youtube.com/watch?v=VIDEO_ID,https://www.youtube.com/channel/CHANNEL_ID"
 ```
 
 If you want to process entire channels, make sure to include the `--process_channel` flag:
 
 ```bash
-python app.py add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
+offlineYoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
 ```
 
 #### **2. How can I upload my own video or audio files for processing?**
@@ -223,7 +223,7 @@ Ensure that the videos or files have been fully processed and that the vector da
 By default, the app keeps videos stored locally. To change this behavior, use the `--keep_videos` flag and set it to `False`:
 
 ```bash
-python app.py add --input "VIDEO_OR_PLAYLIST_URL" --keep_videos False
+offlineYoutube add --input "VIDEO_OR_PLAYLIST_URL" --keep_videos False
 ```
 
 In the Gradio interface, uncheck the **"Keep videos stored locally"** option in the **Add Videos** tab.
@@ -233,7 +233,7 @@ In the Gradio interface, uncheck the **"Keep videos stored locally"** option in 
 Yes! Use the `--process_channel` flag when adding videos via the CLI:
 
 ```bash
-python app.py add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
+offlineYoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
 ```
 
 In the Gradio interface, check the **"Process entire channel when a channel URL is provided"** option in the **Add Videos** tab.
@@ -243,7 +243,7 @@ In the Gradio interface, check the **"Process entire channel when a channel URL 
 Yes! Use the `search` command via the CLI:
 
 ```bash
-python app.py search --query "Your query" --top_k 5
+offlineYoutube search --query "Your query" --top_k 5
 ```
 
 ---
