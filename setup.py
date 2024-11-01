@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     name="offline_youtube",
     version="0.1",
-    packages=find_packages(include=["lib", "lib.*"]),  # Include only the 'lib' package
+    packages=find_packages(include=["lib", "lib.*"]),
     include_package_data=True,
     install_requires=[
         "yt-dlp",
@@ -21,8 +21,8 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "offlineYoutube=app:main"  # Directly point to app.py's main function
+            "offlineYoutube=app:main"
         ]
     },
+    python_requires=">=3.8",
 )
-

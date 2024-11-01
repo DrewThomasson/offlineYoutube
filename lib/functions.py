@@ -1,3 +1,7 @@
+# lib/functions.py
+__all__ = ["initialize_models", "setup_directories", "process_videos", "query_vector_database", "get_video_links"]
+
+
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 

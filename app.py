@@ -1,3 +1,5 @@
+# app.py
+
 import os
 import multiprocessing
 import gradio as gr
@@ -9,10 +11,16 @@ from lib.functions import (
 )
 import sys
 
+# Initialize models at the top level
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+setup_directories()
+whisper_model, embedding_model = initialize_models()
+
 def add_videos_interface(input_text, uploaded_files, process_channel, keep_videos):
     """
     Interface function for adding videos to the database.
     """
+    # Use models directly from the outer scope
     video_links = get_video_links(input_text, process_channel)
     uploaded_files_paths = []
     if uploaded_files:
@@ -25,19 +33,25 @@ def add_videos_interface(input_text, uploaded_files, process_channel, keep_video
     if not video_links and not uploaded_files_paths:
         return "No valid video links or files provided."
     # Process videos and uploaded files
-    data, video_titles = process_videos(video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=keep_videos)
+    data, video_titles = process_videos(
+        video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=keep_videos
+    )
     
     # Prepare a message with the video titles
     titles_message = "\n".join(f"- {title}" for title in video_titles)
     return f"Videos processed and database updated.\nAdded Videos:\n{titles_message}"
-    
+        
 def search_interface(query_text, top_k):
     """
     Interface function for searching the database.
     """
+    # Use embedding_model from the outer scope
     if not os.path.exists('datasets/vector_index.faiss'):
         return "No database found. Please add videos first.", None
-    results, top_videos = query_vector_database(query_text, embedding_model, top_k=top_k)
+    try:
+        results, top_videos = query_vector_database(query_text, embedding_model, top_k=top_k)
+    except Exception as e:
+        return f"Error: {e}", None
 
     # Prepare top videos
     top_videos_html = "<h1>Top Relevant Videos:</h1>"
@@ -193,7 +207,11 @@ Examples:
                 file_upload = gr.File(label="Upload your own video/audio files", file_count="multiple", type="file")
                 add_button = gr.Button("Add Videos")
                 add_output = gr.Textbox(label="Status")
-                add_button.click(add_videos_interface, inputs=[input_text, file_upload, process_channel, keep_videos], outputs=add_output)
+                add_button.click(
+                    add_videos_interface,
+                    inputs=[input_text, file_upload, process_channel, keep_videos],
+                    outputs=add_output
+                )
 
             with gr.Tab("Search"):
                 gr.Markdown("### Search the video database")
@@ -202,7 +220,11 @@ Examples:
                 search_button = gr.Button("Search")
                 top_video_results = gr.HTML()
                 detailed_results = gr.HTML()
-                search_button.click(search_interface, inputs=[query_text, top_k], outputs=[top_video_results, detailed_results])
+                search_button.click(
+                    search_interface,
+                    inputs=[query_text, top_k],
+                    outputs=[top_video_results, detailed_results]
+                )
 
         demo.launch()
 
@@ -215,8 +237,5 @@ if __name__ == "__main__":
         multiprocessing.set_start_method('spawn', force=True)
     except RuntimeError:
         pass
-    # Initialize models
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    setup_directories()
-    whisper_model, embedding_model = initialize_models()
+
     main()
