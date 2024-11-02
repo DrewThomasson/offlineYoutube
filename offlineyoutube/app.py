@@ -12,8 +12,9 @@ from lib.functions import (
 import sys
 
 # Define the base directory
-# In both app.py and functions.py
-OFFLINE_YOUTUBE_DIR = os.path.join(os.path.dirname(__file__), 'offlineYoutubeFiles')
+from .config import OFFLINE_YOUTUBE_DIR
+
+
 
 
 
