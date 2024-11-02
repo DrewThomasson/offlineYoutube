@@ -11,6 +11,9 @@ from lib.functions import (
 )
 import sys
 
+# Define the base directory
+OFFLINE_YOUTUBE_DIR = 'offlineYoutubeFiles'
+
 # Initialize models at the top level
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 setup_directories()
@@ -24,9 +27,10 @@ def add_videos_interface(input_text, uploaded_files, process_channel, keep_video
     video_links = get_video_links(input_text, process_channel)
     uploaded_files_paths = []
     if uploaded_files:
-        os.makedirs('uploaded_files', exist_ok=True)
+        uploaded_files_dir = os.path.join(OFFLINE_YOUTUBE_DIR, 'uploaded_files')
+        os.makedirs(uploaded_files_dir, exist_ok=True)
         for uploaded_file in uploaded_files:
-            file_path = os.path.join('uploaded_files', os.path.basename(uploaded_file.name))
+            file_path = os.path.join(uploaded_files_dir, os.path.basename(uploaded_file.name))
             with open(file_path, 'wb') as f:
                 f.write(uploaded_file.read())
             uploaded_files_paths.append(file_path)
@@ -45,8 +49,10 @@ def search_interface(query_text, top_k):
     """
     Interface function for searching the database.
     """
-    # Use embedding_model from the outer scope
-    if not os.path.exists('datasets/vector_index.faiss'):
+    index_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'vector_index.faiss')
+    dataset_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'transcript_dataset.csv')
+    
+    if not os.path.exists(index_path):
         return "No database found. Please add videos first.", None
     try:
         results, top_videos = query_vector_database(query_text, embedding_model, top_k=top_k)
