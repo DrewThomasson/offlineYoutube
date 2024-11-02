@@ -1,7 +1,6 @@
 # lib/functions.py
 __all__ = ["initialize_models", "setup_directories", "process_videos", "query_vector_database", "get_video_links"]
 
-
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -19,6 +18,9 @@ import pysrt
 import subprocess
 import webvtt
 
+# Define the base directory
+OFFLINE_YOUTUBE_DIR = 'offlineYoutubeFiles'
+
 def initialize_models(whisper_model_size='tiny', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
     """
     Initialize the Whisper and embedding models.
@@ -29,13 +31,13 @@ def initialize_models(whisper_model_size='tiny', device='cpu', compute_type='int
 
 def setup_directories():
     """
-    Create necessary directories for storing thumbnails and datasets.
+    Create necessary directories for storing thumbnails and datasets within the base directory.
     """
-    os.makedirs('thumbnails', exist_ok=True)
-    os.makedirs('datasets', exist_ok=True)
-    os.makedirs('tmp', exist_ok=True)  # Temporary directory for downloaded videos
-    os.makedirs('videos', exist_ok=True)  # Permanent directory for videos if needed
-    os.makedirs('uploaded_files', exist_ok=True)  # Directory for uploaded files
+    os.makedirs(os.path.join(OFFLINE_YOUTUBE_DIR, 'thumbnails'), exist_ok=True)
+    os.makedirs(os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets'), exist_ok=True)
+    os.makedirs(os.path.join(OFFLINE_YOUTUBE_DIR, 'tmp'), exist_ok=True)  # Temporary directory for downloaded videos
+    os.makedirs(os.path.join(OFFLINE_YOUTUBE_DIR, 'videos'), exist_ok=True)  # Permanent directory for videos if needed
+    os.makedirs(os.path.join(OFFLINE_YOUTUBE_DIR, 'uploaded_files'), exist_ok=True)  # Directory for uploaded files
 
 def extract_video_id_from_link(link):
     """
@@ -57,7 +59,7 @@ def download_thumbnail(video_id):
     Download the thumbnail image for a YouTube video.
     """
     thumbnail_url = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
-    thumbnail_path = f"thumbnails/{video_id}.jpg"
+    thumbnail_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'thumbnails', f"{video_id}.jpg")
     
     if not os.path.exists(thumbnail_path):
         response = requests.get(thumbnail_url, stream=True)
@@ -236,14 +238,14 @@ def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_m
     """
     # Paths for dataset and index
     video_titles = set()  # Use a set to store unique video titles
-    dataset_path = 'datasets/transcript_dataset.csv'
-    index_path = 'datasets/vector_index.faiss'
+    dataset_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'transcript_dataset.csv')
+    index_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'vector_index.faiss')
 
     # Decide on video directory
     if keep_videos:
-        video_dir = 'videos'
+        video_dir = os.path.join(OFFLINE_YOUTUBE_DIR, 'videos')
     else:
-        video_dir = 'tmp'
+        video_dir = os.path.join(OFFLINE_YOUTUBE_DIR, 'tmp')
 
     os.makedirs(video_dir, exist_ok=True)
 
@@ -405,8 +407,10 @@ def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_m
             # Uploaded files are always kept locally
 
     # Delete the tmp directory and all its contents if not keeping videos
-    if not keep_videos and os.path.exists('tmp'):
-        shutil.rmtree('tmp')
+    if not keep_videos:
+        tmp_dir = os.path.join(OFFLINE_YOUTUBE_DIR, 'tmp')
+        if os.path.exists(tmp_dir):
+            shutil.rmtree(tmp_dir)
 
     print("All videos and uploaded files have been processed and added to the database.")
     return data, list(video_titles)  # Convert set to list before returning
@@ -415,8 +419,14 @@ def query_vector_database(query, embedding_model, top_k=5):
     """
     Query the FAISS vector database with a search query.
     """
-    index = faiss.read_index('datasets/vector_index.faiss')
-    data = pd.read_csv('datasets/transcript_dataset.csv')
+    index_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'vector_index.faiss')
+    dataset_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'transcript_dataset.csv')
+
+    if not os.path.exists(index_path):
+        raise FileNotFoundError("Vector index not found. Please add videos first.")
+
+    index = faiss.read_index(index_path)
+    data = pd.read_csv(dataset_path)
     if 'video_id' not in data.columns:
         data['video_id'] = data['YouTube_link'].apply(get_video_id)
 
