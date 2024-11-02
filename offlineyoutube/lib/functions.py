@@ -1,6 +1,4 @@
 # lib/functions.py
-__all__ = ["initialize_models", "setup_directories", "process_videos", "query_vector_database", "get_video_links"]
-
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -18,8 +16,8 @@ import pysrt
 import subprocess
 import webvtt
 
-# Define the base directory
-OFFLINE_YOUTUBE_DIR = 'offlineYoutubeFiles'
+# Define the base directory pulled from the app.py
+from ..app import OFFLINE_YOUTUBE_DIR
 
 def initialize_models(whisper_model_size='tiny', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
     """
@@ -68,19 +66,31 @@ def download_thumbnail(video_id):
                 f.write(response.content)
     return thumbnail_path
 
-def download_video(video_url, output_dir, keep_video=True, download_audio_only=False):
+def download_video(video_url, output_dir, keep_video=True, download_audio_only=False, video_quality="720p"):
     """
     Download video or audio to a specified directory, attempt to download subtitles.
     """
     # First, attempt to download subtitles only
     subtitles_available, subtitle_file, video_id, video_title = download_subtitles(video_url, output_dir)
     
+    # Define video quality mapping
+    quality_mapping = {
+        "144p": "bestvideo[height<=144][ext=mp4]+bestaudio[ext=m4a]/mp4",
+        "240p": "bestvideo[height<=240][ext=mp4]+bestaudio[ext=m4a]/mp4",
+        "360p": "bestvideo[height<=360][ext=mp4]+bestaudio[ext=m4a]/mp4",
+        "480p": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/mp4",
+        "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4",
+        "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/mp4",
+    }
+
+    selected_format = quality_mapping.get(video_quality, "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4")
+
     # Decide whether to download video or audio based on subtitles availability and user preference
     # Modified logic to download video if keep_video is True
     if keep_video:
-        # Need to download the video regardless of subtitles availability
+        # Need to download the video with selected quality
         ydl_opts = {
-            'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/mp4',
+            'format': selected_format,
             'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
             'quiet': True,
             'no_warnings': True,
@@ -232,7 +242,7 @@ def extract_transcript_from_subtitles(subtitle_file):
         print(f"Error reading subtitles file {subtitle_file}: {e}")
     return sentences
 
-def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=False):
+def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=False, video_quality="720p"):
     """
     Process each YouTube video and uploaded files one by one, updating the dataset and vector database after each.
     """
@@ -278,9 +288,9 @@ def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_m
             # Determine if we need to download audio-only
             download_audio_only = not keep_videos
 
-            # Download video or audio and subtitles
+            # Download video or audio and subtitles with selected video quality
             video_file, video_id, video_title, subtitles_available, subtitle_file = download_video(
-                link, video_dir, keep_video=keep_videos, download_audio_only=download_audio_only
+                link, video_dir, keep_video=keep_videos, download_audio_only=download_audio_only, video_quality=video_quality
             )
 
             if not subtitles_available and not video_file:

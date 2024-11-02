@@ -12,14 +12,17 @@ from lib.functions import (
 import sys
 
 # Define the base directory
-OFFLINE_YOUTUBE_DIR = 'offlineYoutubeFiles'
+# In both app.py and functions.py
+OFFLINE_YOUTUBE_DIR = os.path.join(os.path.dirname(__file__), 'offlineYoutubeFiles')
+
+
 
 # Initialize models at the top level
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 setup_directories()
 whisper_model, embedding_model = initialize_models()
 
-def add_videos_interface(input_text, uploaded_files, process_channel, keep_videos):
+def add_videos_interface(input_text, uploaded_files, process_channel, keep_videos, video_quality):
     """
     Interface function for adding videos to the database.
     """
@@ -36,9 +39,9 @@ def add_videos_interface(input_text, uploaded_files, process_channel, keep_video
             uploaded_files_paths.append(file_path)
     if not video_links and not uploaded_files_paths:
         return "No valid video links or files provided."
-    # Process videos and uploaded files
+    # Process videos and uploaded files with selected video quality
     data, video_titles = process_videos(
-        video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=keep_videos
+        video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=keep_videos, video_quality=video_quality
     )
     
     # Prepare a message with the video titles
@@ -136,13 +139,13 @@ def main():
 Examples:
   # Add videos from a playlist and keep videos locally
   python app.py add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID" --keep_videos
-
+  
   # Add specific videos without keeping videos locally
   python app.py add --input "https://www.youtube.com/watch?v=VIDEO_ID1,https://www.youtube.com/watch?v=VIDEO_ID2"
-
+  
   # Search the database with a query
   python app.py search --query "Your search query" --top_k 5
-
+  
   # Run the Gradio web interface
   python app.py ui
 """,
@@ -168,7 +171,9 @@ Examples:
     args = parser.parse_args()
 
     if args.command == 'add':
-        status = add_videos_interface(args.input, [], args.process_channel, args.keep_videos)
+        # For CLI, we will use the default video quality of 720p
+        default_video_quality = "720p"
+        status = add_videos_interface(args.input, [], args.process_channel, args.keep_videos, default_video_quality)
         print(status)
 
     elif args.command == 'search':
@@ -210,12 +215,18 @@ Examples:
                 input_text = gr.Textbox(lines=2, placeholder="Enter playlist, channel, and/or video URLs (comma-separated)")
                 process_channel = gr.Checkbox(label="Process entire channel when a channel URL is provided", value=False)
                 keep_videos = gr.Checkbox(label="Keep videos stored locally", value=True)
+                video_quality = gr.Dropdown(
+                    label="Select Video Quality",
+                    choices=["144p", "240p", "360p", "480p", "720p", "1080p"],
+                    value="720p",
+                    info="Choose the desired video quality for downloads."
+                )
                 file_upload = gr.File(label="Upload your own video/audio files", file_count="multiple", type="file")
                 add_button = gr.Button("Add Videos")
                 add_output = gr.Textbox(label="Status")
                 add_button.click(
                     add_videos_interface,
-                    inputs=[input_text, file_upload, process_channel, keep_videos],
+                    inputs=[input_text, file_upload, process_channel, keep_videos, video_quality],
                     outputs=add_output
                 )
 
