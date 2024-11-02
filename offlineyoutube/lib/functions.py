@@ -17,7 +17,9 @@ import subprocess
 import webvtt
 
 # Define the base directory pulled from the app.py
-from ..app import OFFLINE_YOUTUBE_DIR
+from ..config import OFFLINE_YOUTUBE_DIR
+
+
 
 def initialize_models(whisper_model_size='tiny', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
     """
