@@ -1,0 +1,8 @@
+# Ignore build artifacts
+build/
+dist/
+offlineyoutube.egg-info/
+__pycache__/
+offlineyoutube/offlineYoutubeFiles/
+*.DS_Store
+
