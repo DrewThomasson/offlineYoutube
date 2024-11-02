@@ -17,7 +17,9 @@ import subprocess
 import webvtt
 
 # Define the base directory pulled from the app.py
-from ..config import OFFLINE_YOUTUBE_DIR
+#from ..config import OFFLINE_YOUTUBE_DIR
+from offlineyoutube.config import OFFLINE_YOUTUBE_DIR
+
 
 
 

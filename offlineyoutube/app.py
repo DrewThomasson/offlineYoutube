@@ -1,6 +1,10 @@
 # app.py
 
 import os
+import sys
+sys.path.append(os.path.dirname(__file__))  # Add this line here
+
+
 import multiprocessing
 import gradio as gr
 import argparse
@@ -9,8 +13,6 @@ from lib.functions import (
     initialize_models, setup_directories, process_videos,
     query_vector_database, get_video_links
 )
-import sys
-
 # Define the base directory
 from .config import OFFLINE_YOUTUBE_DIR
 

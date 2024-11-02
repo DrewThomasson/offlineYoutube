@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="offlineyoutube",
-    version="2.1.5",
+    version="2.1.6",
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
