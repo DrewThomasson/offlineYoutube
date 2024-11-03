@@ -3,72 +3,36 @@
 import os
 import sys
 sys.path.append(os.path.dirname(__file__))  # Add this line here
-
-
 import multiprocessing
+import shutil
 import gradio as gr
 import argparse
-import pandas as pd  # Added to handle NaN values
+import pandas as pd
 from lib.functions import (
     initialize_models, setup_directories, process_videos,
     query_vector_database, get_video_links
 )
-# Define the base directory
-from .config import OFFLINE_YOUTUBE_DIR
-
-
-
-
-
-# Initialize models at the top level
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-setup_directories()
-whisper_model, embedding_model = initialize_models()
-
-# app.py
-
-import os
-import sys
-import multiprocessing
-import shutil  # Added import
-import gradio as gr
-import argparse
-import pandas as pd  # Added to handle NaN values
-from lib.functions import (
-    initialize_models, setup_directories, process_videos,
-    query_vector_database, get_video_links
-)
-# Define the base directory
 from config import OFFLINE_YOUTUBE_DIR  # Ensure this path is correct
-
-# Initialize models at the top level
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-setup_directories()
-whisper_model, embedding_model = initialize_models()
-
 
 def add_videos_interface(input_text, uploaded_files, process_channel, keep_videos, video_quality):
     """
     Interface function for adding videos to the database.
     """
-    # Use models directly from the outer scope
+    # Initialize models within the function to avoid multi-processing issues
+    whisper_model, embedding_model = initialize_models()
+    
     video_links = get_video_links(input_text, process_channel)
     uploaded_files_paths = []
     if uploaded_files:
         uploaded_files_dir = os.path.join(OFFLINE_YOUTUBE_DIR, 'uploaded_files')
         os.makedirs(uploaded_files_dir, exist_ok=True)
         for uploaded_file in uploaded_files:
-            # Gradio v3.36.1 provides uploaded_file as a _TemporaryFileWrapper object
-            # 'uploaded_file.name' contains the path to the temporary file
             try:
-                # Extract the original filename from the temporary file path
                 original_filename = os.path.basename(uploaded_file.name)
                 file_path = os.path.join(uploaded_files_dir, original_filename)
                 
-                # Copy the file from the temporary location to the desired directory
                 shutil.copy(uploaded_file.name, file_path)
                 
-                # Verify that the file has been copied correctly and is not empty
                 if os.path.getsize(file_path) == 0:
                     print(f"Uploaded file {original_filename} is empty. Skipping.")
                     continue
@@ -80,7 +44,7 @@ def add_videos_interface(input_text, uploaded_files, process_channel, keep_video
         return "No valid video links or files provided."
     # Process videos and uploaded files with selected video quality
     data, video_titles = process_videos(
-        video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=keep_videos, video_quality=video_quality
+        video_links, uploaded_files_paths, keep_videos=keep_videos, video_quality=video_quality
     )
     
     # Prepare a message with the video titles
@@ -90,11 +54,13 @@ def add_videos_interface(input_text, uploaded_files, process_channel, keep_video
     else:
         return "No new videos were added to the database."
 
-
 def search_interface(query_text, top_k):
     """
     Interface function for searching the database.
     """
+    # Initialize only the embedding model within the function
+    _, embedding_model = initialize_models()
+    
     index_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'vector_index.faiss')
     dataset_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'transcript_dataset.csv')
     
@@ -177,8 +143,10 @@ def search_interface(query_text, top_k):
         """
     return top_videos_html, detailed_html
 
-
 def main():
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    setup_directories()
+    
     parser = argparse.ArgumentParser(
         description="YouTube Video Search Application",
         epilog="""
@@ -217,7 +185,7 @@ Examples:
     args = parser.parse_args()
 
     if args.command == 'add':
-        # For CLI, we will use the default video quality of 720p
+        # For CLI, use the default video quality of 720p
         default_video_quality = "720p"
         status = add_videos_interface(args.input, [], args.process_channel, args.keep_videos, default_video_quality)
         print(status)
@@ -290,7 +258,6 @@ Examples:
                 )
 
         demo.launch()
-
 
 if __name__ == "__main__":
     # Fix for multiprocessing in PyInstaller

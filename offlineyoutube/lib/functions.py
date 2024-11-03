@@ -1,29 +1,3 @@
-# lib/functions.py
-import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-import re
-import yt_dlp
-import pandas as pd
-import numpy as np
-import requests
-import faiss
-import shutil
-from faster_whisper import WhisperModel
-from sentence_transformers import SentenceTransformer
-from tqdm import tqdm
-import pysrt
-import subprocess
-import webvtt
-
-# Define the base directory pulled from the app.py
-#from ..config import OFFLINE_YOUTUBE_DIR
-from offlineyoutube.config import OFFLINE_YOUTUBE_DIR
-
-
-
-
-# lib/functions.py
 import os
 import re
 import yt_dlp
@@ -40,12 +14,9 @@ import subprocess
 import webvtt
 import tempfile
 from pathlib import Path
-
-# Define the base directory pulled from the app.py
 from config import OFFLINE_YOUTUBE_DIR  # Ensure this path is correct
 
-
-def initialize_models(whisper_model_size='small', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
+def initialize_models(whisper_model_size='tiny', device='cpu', compute_type='int8', embedding_model_name='all-MiniLM-L6-v2'):
     """
     Initialize the Whisper and embedding models.
     """
@@ -65,7 +36,6 @@ def initialize_models(whisper_model_size='small', device='cpu', compute_type='in
 
     return whisper_model, embedding_model
 
-
 def setup_directories():
     """
     Create necessary directories for storing thumbnails and datasets within the base directory.
@@ -82,14 +52,12 @@ def setup_directories():
         os.makedirs(path, exist_ok=True)
         print(f"Ensured directory exists: {path}")
 
-
 def extract_video_id_from_link(link):
     """
     Extract YouTube video ID from a link.
     """
     video_id = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", link)
     return video_id.group(1) if video_id else None
-
 
 def get_video_id(youtube_link):
     """
@@ -98,7 +66,6 @@ def get_video_id(youtube_link):
     pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
     match = re.search(pattern, youtube_link)
     return match.group(1) if match else None
-
 
 def download_thumbnail(video_id):
     """
@@ -121,7 +88,6 @@ def download_thumbnail(video_id):
     else:
         print(f"Thumbnail already exists for video ID {video_id} at {thumbnail_path}.")
     return thumbnail_path
-
 
 def download_video(video_url, output_dir, keep_video=True, download_audio_only=False, video_quality="720p"):
     """
@@ -195,7 +161,6 @@ def download_video(video_url, output_dir, keep_video=True, download_audio_only=F
 
     return video_file, video_id, video_title, subtitles_available, subtitle_file
 
-
 def download_subtitles(video_url, output_dir):
     """
     Attempt to download subtitles for a video without downloading the video.
@@ -251,7 +216,6 @@ def download_subtitles(video_url, output_dir):
         print(f"Error downloading subtitles for video {video_url}: {e}")
         return False, None, None, None
 
-
 def extract_audio_from_video(video_file_path):
     """
     Extract audio from a video file using ffmpeg and save it to a temporary file.
@@ -276,7 +240,6 @@ def extract_audio_from_video(video_file_path):
     except Exception as e:
         print(f"Error extracting audio from {video_file_path}: {e}")
         return None
-
 
 def convert_to_mp4(input_file, output_dir):
     """
@@ -308,7 +271,6 @@ def convert_to_mp4(input_file, output_dir):
         print(f"Error converting {input_file} to MP4: {e}")
         return None
 
-
 def extract_transcript(audio_file, whisper_model, subtitles_available=False, subtitle_file=None):
     """
     Transcribe the audio file using faster-whisper or read subtitles.
@@ -336,7 +298,6 @@ def extract_transcript(audio_file, whisper_model, subtitles_available=False, sub
         print("No subtitles or audio file available for transcription.")
         sentences = []
     return sentences
-
 
 def extract_transcript_from_subtitles(subtitle_file):
     """
@@ -378,6 +339,7 @@ def query_vector_database(query, embedding_model, top_k=5):
     data = pd.read_csv(dataset_path)
     if 'video_id' not in data.columns:
         data['video_id'] = data['YouTube_link'].apply(get_video_id)
+        data.to_csv(dataset_path, index=False)
 
     query_vector = embedding_model.encode(query).astype('float32').reshape(1, -1)
     distances, indices = index.search(query_vector, top_k)
@@ -399,13 +361,17 @@ def query_vector_database(query, embedding_model, top_k=5):
         .sort_values(by='relevance', ascending=True)
         .head(5)
         .reset_index(drop=True)
-)
+    )
 
+    return results, video_relevance
 
-def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_model, keep_videos=False, video_quality="720p"):
+def process_videos(video_links, uploaded_files_paths, keep_videos=False, video_quality="720p"):
     """
     Process each YouTube video and uploaded files one by one, updating the dataset and vector database after each.
     """
+    # Initialize models within the function to avoid multi-processing issues
+    whisper_model, embedding_model = initialize_models()
+    
     # Paths for dataset and index
     video_titles = set()  # Use a set to store unique video titles
     dataset_path = os.path.join(OFFLINE_YOUTUBE_DIR, 'datasets', 'transcript_dataset.csv')
@@ -614,15 +580,13 @@ def process_videos(video_links, uploaded_files_paths, whisper_model, embedding_m
                 shutil.rmtree(os.path.dirname(audio_file_path))
                 print(f"Deleted temporary audio file directory: {os.path.dirname(audio_file_path)}")
 
-        return results[['text', 'YouTube_timestamped_link', 'thumbnail_path', 'score', 'video_title', 'local_video_path', 'timestamp']], video_relevance
-
+    return data, video_titles
 
 def is_channel_url(url):
     """
     Check if a URL is a YouTube channel URL.
     """
     return any(x in url for x in ['/channel/', '/c/', '/user/'])
-
 
 def get_video_links(input_text, process_channel=False):
     """
