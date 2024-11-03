@@ -60,13 +60,13 @@ The app provides **two ways to interact**:
 Launch the web interface:
 
 ```bash
-offlineYoutube ui
+offlineyoutube ui
 ```
 
 or simply:
 
 ```bash
-offlineYoutube
+offlineyoutube
 ```
 
 Then, open the URL (usually `http://127.0.0.1:7860`) in your browser.
@@ -97,13 +97,13 @@ The CLI provides more flexibility for programmatic use.
 Use the `--help` command to view available commands and examples:
 
 ```bash
-offlineYoutube --help
+offlineyoutube --help
 ```
 
 **Output:**
 
 ```
-usage: offlineYoutube [-h] {add,search,ui} ...
+usage: offlineyoutube [-h] {add,search,ui} ...
 
 YouTube Video Search Application
 
@@ -118,19 +118,19 @@ optional arguments:
 
 Examples:
   # Add videos from a playlist and keep videos locally
-  offlineYoutube add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID" --keep_videos
+  offlineyoutube add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID" --keep_videos
 
   # Add specific videos without keeping videos locally
-  offlineYoutube add --input "https://www.youtube.com/watch?v=VIDEO_ID1,https://www.youtube.com/watch?v=VIDEO_ID2"
+  offlineyoutube add --input "https://www.youtube.com/watch?v=VIDEO_ID1,https://www.youtube.com/watch?v=VIDEO_ID2"
 
   # Add videos from a channel (process entire channel)
-  offlineYoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
+  offlineyoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
 
   # Search the database with a query
-  offlineYoutube search --query "Your search query" --top_k 5
+  offlineyoutube search --query "Your search query" --top_k 5
 
   # Run the Gradio web interface
-  offlineYoutube ui
+  offlineyoutube ui
 ```
 
 ---
@@ -142,25 +142,25 @@ Examples:
 - **Add Playlists and Videos:**
 
    ```bash
-   offlineYoutube add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID,https://www.youtube.com/watch?v=VIDEO_ID"
+   offlineyoutube add --input "https://www.youtube.com/playlist?list=YOUR_PLAYLIST_ID,https://www.youtube.com/watch?v=VIDEO_ID"
    ```
 
 - **Add Specific Videos Without Keeping Them Locally:**
 
    ```bash
-   offlineYoutube add --input "https://www.youtube.com/watch?v=dQw4w9WgXcQ,https://www.youtube.com/watch?v=9bZkp7q19f0"
+   offlineyoutube add --input "https://www.youtube.com/watch?v=dQw4w9WgXcQ,https://www.youtube.com/watch?v=9bZkp7q19f0"
    ```
 
 - **Add Videos from a Channel (Process Entire Channel):**
 
    ```bash
-   offlineYoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
+   offlineyoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
    ```
 
 - **Add Videos and Keep Videos Stored Locally:**
 
    ```bash
-   offlineYoutube add --input "https://www.youtube.com/watch?v=VIDEO_ID" --keep_videos
+   offlineyoutube add --input "https://www.youtube.com/watch?v=VIDEO_ID" --keep_videos
    ```
 
 #### **2. Searching the Database**
@@ -168,7 +168,7 @@ Examples:
 - **Perform a Search:**
 
    ```bash
-   offlineYoutube search --query "machine learning tutorials" --top_k 5
+   offlineyoutube search --query "machine learning tutorials" --top_k 5
    ```
 
 ---
@@ -201,13 +201,13 @@ Examples:
 Simply provide a comma-separated list of URLs, and the app will automatically detect and process each link:
 
 ```bash
-offlineYoutube add --input "https://www.youtube.com/playlist?list=PLAYLIST_ID1,https://www.youtube.com/watch?v=VIDEO_ID,https://www.youtube.com/channel/CHANNEL_ID"
+offlineyoutube add --input "https://www.youtube.com/playlist?list=PLAYLIST_ID1,https://www.youtube.com/watch?v=VIDEO_ID,https://www.youtube.com/channel/CHANNEL_ID"
 ```
 
 If you want to process entire channels, make sure to include the `--process_channel` flag:
 
 ```bash
-offlineYoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
+offlineyoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
 ```
 
 #### **2. How can I upload my own video or audio files for processing?**
@@ -223,7 +223,7 @@ Ensure that the videos or files have been fully processed and that the vector da
 By default, the app keeps videos stored locally. To change this behavior, use the `--keep_videos` flag and set it to `False`:
 
 ```bash
-offlineYoutube add --input "VIDEO_OR_PLAYLIST_URL" --keep_videos False
+offlineyoutube add --input "VIDEO_OR_PLAYLIST_URL" --keep_videos False
 ```
 
 In the Gradio interface, uncheck the **"Keep videos stored locally"** option in the **Add Videos** tab.
@@ -233,7 +233,7 @@ In the Gradio interface, uncheck the **"Keep videos stored locally"** option in 
 Yes! Use the `--process_channel` flag when adding videos via the CLI:
 
 ```bash
-offlineYoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
+offlineyoutube add --input "https://www.youtube.com/channel/CHANNEL_ID" --process_channel
 ```
 
 In the Gradio interface, check the **"Process entire channel when a channel URL is provided"** option in the **Add Videos** tab.
@@ -243,7 +243,7 @@ In the Gradio interface, check the **"Process entire channel when a channel URL 
 Yes! Use the `search` command via the CLI:
 
 ```bash
-offlineYoutube search --query "Your query" --top_k 5
+offlineyoutube search --query "Your query" --top_k 5
 ```
 
 ---
