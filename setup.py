@@ -22,7 +22,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "offlineYoutube=offlineyoutube.app:main"
+            "offlineyoutube=offlineyoutube.app:main"
         ]
     },
     python_requires=">=3.8",
