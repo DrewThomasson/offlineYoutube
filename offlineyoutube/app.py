@@ -25,6 +25,28 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 setup_directories()
 whisper_model, embedding_model = initialize_models()
 
+# app.py
+
+import os
+import sys
+import multiprocessing
+import shutil  # Added import
+import gradio as gr
+import argparse
+import pandas as pd  # Added to handle NaN values
+from lib.functions import (
+    initialize_models, setup_directories, process_videos,
+    query_vector_database, get_video_links
+)
+# Define the base directory
+from config import OFFLINE_YOUTUBE_DIR  # Ensure this path is correct
+
+# Initialize models at the top level
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+setup_directories()
+whisper_model, embedding_model = initialize_models()
+
+
 def add_videos_interface(input_text, uploaded_files, process_channel, keep_videos, video_quality):
     """
     Interface function for adding videos to the database.
@@ -36,10 +58,24 @@ def add_videos_interface(input_text, uploaded_files, process_channel, keep_video
         uploaded_files_dir = os.path.join(OFFLINE_YOUTUBE_DIR, 'uploaded_files')
         os.makedirs(uploaded_files_dir, exist_ok=True)
         for uploaded_file in uploaded_files:
-            file_path = os.path.join(uploaded_files_dir, os.path.basename(uploaded_file.name))
-            with open(file_path, 'wb') as f:
-                f.write(uploaded_file.read())
-            uploaded_files_paths.append(file_path)
+            # Gradio v3.36.1 provides uploaded_file as a _TemporaryFileWrapper object
+            # 'uploaded_file.name' contains the path to the temporary file
+            try:
+                # Extract the original filename from the temporary file path
+                original_filename = os.path.basename(uploaded_file.name)
+                file_path = os.path.join(uploaded_files_dir, original_filename)
+                
+                # Copy the file from the temporary location to the desired directory
+                shutil.copy(uploaded_file.name, file_path)
+                
+                # Verify that the file has been copied correctly and is not empty
+                if os.path.getsize(file_path) == 0:
+                    print(f"Uploaded file {original_filename} is empty. Skipping.")
+                    continue
+                uploaded_files_paths.append(file_path)
+                print(f"Saved uploaded file {original_filename} to {file_path} ({os.path.getsize(file_path)} bytes)")
+            except Exception as e:
+                print(f"Error saving uploaded file {original_filename}: {e}")
     if not video_links and not uploaded_files_paths:
         return "No valid video links or files provided."
     # Process videos and uploaded files with selected video quality
@@ -48,9 +84,13 @@ def add_videos_interface(input_text, uploaded_files, process_channel, keep_video
     )
     
     # Prepare a message with the video titles
-    titles_message = "\n".join(f"- {title}" for title in video_titles)
-    return f"Videos processed and database updated.\nAdded Videos:\n{titles_message}"
-        
+    if video_titles:
+        titles_message = "\n".join(f"- {title}" for title in video_titles)
+        return f"Videos processed and database updated.\nAdded Videos:\n{titles_message}"
+    else:
+        return "No new videos were added to the database."
+
+
 def search_interface(query_text, top_k):
     """
     Interface function for searching the database.
@@ -77,7 +117,8 @@ def search_interface(query_text, top_k):
             local_video_exists = False
         local_video_player = ''
         if local_video_exists:
-            local_video_url = 'file/' + local_video_path
+            # Replace backslashes with forward slashes for compatibility
+            local_video_url = 'file/' + local_video_path.replace("\\", "/")
             local_video_player = f"""
             <details>
                 <summary>Show Local Video</summary>
@@ -111,7 +152,8 @@ def search_interface(query_text, top_k):
             local_video_exists = False
         local_video_player = ''
         if local_video_exists:
-            local_video_url = 'file/' + local_video_path
+            # Replace backslashes with forward slashes for compatibility
+            local_video_url = 'file/' + local_video_path.replace("\\", "/")
             timestamp = int(row['timestamp'])
             local_video_player = f"""
             <details>
@@ -134,6 +176,7 @@ def search_interface(query_text, top_k):
         </div>
         """
     return top_videos_html, detailed_html
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -247,6 +290,7 @@ Examples:
                 )
 
         demo.launch()
+
 
 if __name__ == "__main__":
     # Fix for multiprocessing in PyInstaller
