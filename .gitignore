@@ -1,8 +1,19 @@
 # Ignore build artifacts
 build/
 dist/
-offlineyoutube.egg-info/
+*.egg-info/
 __pycache__/
+
+# macOS files
+.DS_Store
+
+# Python cache
+*.pyc
+*.pyo
+
+# Virtual environments
+venv/
+
+# Project-specific files
 offlineyoutube/offlineYoutubeFiles/
-*.DS_Store
 
