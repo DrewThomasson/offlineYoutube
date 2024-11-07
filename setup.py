@@ -12,7 +12,7 @@ if platform.system() == "Darwin" and platform.processor() == "arm":
 
 setup(
     name="offlineyoutube",
-    version="2.2.0b",
+    version="2.2.0b1",
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
