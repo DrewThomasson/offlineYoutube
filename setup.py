@@ -1,5 +1,14 @@
-# setup.py
+import sys
+import platform
 from setuptools import setup, find_packages
+
+# Check for M1 Mac and Python version
+if platform.system() == "Darwin" and platform.processor() == "arm":
+    if not (sys.version_info.major == 3 and sys.version_info.minor == 10):
+        raise RuntimeError(
+            "This package requires Python 3.10 on M1 Macs. "
+            "Please create a Python 3.10 virtual environment and try again."
+        )
 
 setup(
     name="offlineyoutube",
