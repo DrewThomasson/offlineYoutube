@@ -499,8 +499,9 @@ def process_videos(video_links, uploaded_files_paths, keep_videos=False, video_q
     if uploaded_files_paths:
         for idx, file_path in enumerate(tqdm(uploaded_files_paths, desc="Processing Uploaded Files", unit="file")):
             file_extension = os.path.splitext(file_path)[1].lower()
-            is_video = file_extension in ['.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv']
-            is_audio = file_extension in ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a']
+            is_video = file_extension in ['.mp4', '.mkv', '.avi', '.mov', '.flv', '.wmv', '.webm', '.mpeg', '.mpg', '.m4v', '.3gp', '.mts', '.ts', '.vob']
+            is_audio = file_extension in ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a', '.wma', '.aiff', '.amr', '.opus', '.ra']
+
 
             if not (is_video or is_audio):
                 print(f"Unsupported file type for file {file_path}. Skipping.")
